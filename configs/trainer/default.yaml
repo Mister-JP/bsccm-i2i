@@ -1,0 +1,5 @@
+max_epochs: 100
+device: cpu
+precision: "32"
+overfit_n: 0
+seed: 123

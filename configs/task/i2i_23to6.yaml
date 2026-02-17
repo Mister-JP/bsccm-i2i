@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - /data: bsccm_tiny
+  - /split: random_80_10_10
+  - _self_
+
+task_name: i2i_23to6
+run:
+  run_name: i2i_23to6_split
+  tags:
+    - split
+    - i2i_23to6

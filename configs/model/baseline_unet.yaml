@@ -1,0 +1,4 @@
+name: unet
+in_channels: 23
+out_channels: 6
+base_channels: 32

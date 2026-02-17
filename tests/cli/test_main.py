@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from bsccm_i2i.cli.main import app
@@ -22,7 +24,11 @@ def test_subcommand_help_exits_zero() -> None:
         assert result.exit_code == 0
 
 
-def test_subcommands_print_deterministic_called_message() -> None:
+def test_subcommands_print_deterministic_called_message(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
     runner = CliRunner()
 
     expected = {

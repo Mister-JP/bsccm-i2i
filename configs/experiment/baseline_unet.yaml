@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - /data: bsccm_tiny
+  - /split: random_80_10_10
+  - /model: baseline_unet
+  - /trainer: default
+  - /logging: default
+  - _self_
+
+run:
+  run_name: baseline_unet
+  tags:
+    - baseline
+    - unet

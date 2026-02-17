@@ -9,6 +9,9 @@ from typing import Annotated
 import typer
 
 from bsccm_i2i import __version__
+from bsccm_i2i.config.loader import load_config, to_resolved_dict
+from bsccm_i2i.config.schema import SplitTaskConfig, TrainConfig
+from bsccm_i2i.runners.paths import create_run_dir, write_yaml
 
 app = typer.Typer(
     name="bsccm-i2i",
@@ -42,11 +45,21 @@ def _validate_config_or_overrides(config: Path | None, overrides: list[str]) -> 
 
 def _run_split(config: ConfigPath, overrides: Overrides) -> None:
     _validate_config_or_overrides(config=config, overrides=overrides)
+    cfg = load_config(config_path=config, config_name="task/i2i_23to6", overrides=overrides or [])
+    SplitTaskConfig.model_validate(to_resolved_dict(cfg))
     typer.echo("CALLED split")
 
 
 def _run_train(config: ConfigPath, overrides: Overrides) -> None:
     _validate_config_or_overrides(config=config, overrides=overrides)
+    cfg = load_config(config_path=config, config_name="task/train", overrides=overrides or [])
+    resolved_cfg = to_resolved_dict(cfg)
+    train_cfg = TrainConfig.model_validate(resolved_cfg)
+
+    run_dir = create_run_dir(train_cfg.run.run_name)
+    write_yaml(run_dir / "config_resolved.yaml", resolved_cfg)
+
+    typer.echo(f"RUN_DIR {run_dir}")
     typer.echo("CALLED train")
 
 
