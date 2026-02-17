@@ -1,2 +1,33 @@
-# Ignore all hidden directories (folders starting with a dot)
-**/.*/
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Coverage and test outputs
+.coverage
+coverage.xml
+htmlcov/
+
+# Notebook / editor noise
+.ipynb_checkpoints/
+.DS_Store
+
+# Hydra + run outputs
+.hydra/
+runs/
+
+# Local data and artifacts
+data/
+artifacts/
+logs/
+.stories/
