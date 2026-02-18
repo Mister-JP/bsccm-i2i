@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DataConfig(BaseModel):
@@ -48,7 +50,7 @@ class TrainerConfig(BaseModel):
     deterministic: bool = True
     max_steps: int = 0
     # Throttle validation[0.00, 1.00] work per run; lower for faster debug/smoke iterations.
-    limit_val_batches: float | int = 1.0 
+    limit_val_batches: float | int = 1.0
     enable_checkpointing: bool = True
     logger: bool = True
 
@@ -73,6 +75,53 @@ class TrainConfig(BaseModel):
     trainer: TrainerConfig
     logging: LoggingConfig
     run: RunConfig
+
+
+class EvalConfig(BaseModel):
+    run_dir: str
+    checkpoint: str = "best"
+    device: str = "auto"
+    precision: str = "32"
+    limit_test_batches: float | int = 1.0
+
+
+class EvalTaskConfig(BaseModel):
+    task_name: str
+    eval: EvalConfig
+
+
+class SplitRefCounts(BaseModel):
+    train: int
+    val: int
+    test: int
+
+
+class SplitRefArtifact(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    split_id: str
+    split_dir: str
+    indices_csv: str
+    fingerprint: dict[str, Any]
+    counts: SplitRefCounts
+
+
+class BestMetricArtifact(BaseModel):
+    name: str
+    value: float | None = None
+
+
+class TestSummaryArtifact(BaseModel):
+    checkpoint: str
+    metrics_path: str
+
+
+class RunReportArtifact(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    split_id: str
+    best_metric: BestMetricArtifact | None = None
+    best_checkpoint_path: str | None = None
+    git_commit: str | None = None
+    test_summary: TestSummaryArtifact | None = None
 
 
 class SplitTaskConfig(BaseModel):

@@ -63,6 +63,14 @@ _BASE_LOGGING_CONFIG: dict[str, Any] = {
     "data_progress": False,
 }
 
+_BASE_EVAL_CONFIG: dict[str, Any] = {
+    "run_dir": "runs/2026-02-18/baseline_unet/2026-02-18_00-00-00",
+    "checkpoint": "best",
+    "device": "cpu",
+    "precision": "32",
+    "limit_test_batches": 1.0,
+}
+
 
 def make_train_config(
     *,
@@ -96,6 +104,21 @@ def make_split_task_config(
         "run": {"run_name": "split_artifact", "tags": ["split"]},
     }
     config["split"]["name"] = split_name
+    if overrides:
+        _deep_update(config, overrides)
+    return config
+
+
+def make_eval_task_config(
+    *,
+    run_dir: str = "runs/2026-02-18/baseline_unet/2026-02-18_00-00-00",
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "task_name": "eval",
+        "eval": deepcopy(_BASE_EVAL_CONFIG),
+    }
+    config["eval"]["run_dir"] = run_dir
     if overrides:
         _deep_update(config, overrides)
     return config

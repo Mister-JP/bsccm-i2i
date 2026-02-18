@@ -25,3 +25,14 @@ def build_model(model_cfg: ModelConfig) -> pl.LightningModule:
     raise ValueError(
         f"Unsupported model name {model_cfg.name!r}. Allowed model names: {allowed_names}."
     )
+
+
+def load_model_from_checkpoint(model_cfg: ModelConfig, checkpoint_path: str) -> pl.LightningModule:
+    """Load a model module from checkpoint using module-stored hyperparameters."""
+    if model_cfg.name == "unet_cnn":
+        return UNetCNNModule.load_from_checkpoint(checkpoint_path)
+
+    allowed_names = ", ".join(ALLOWED_MODEL_NAMES)
+    raise ValueError(
+        f"Unsupported model name {model_cfg.name!r}. Allowed model names: {allowed_names}."
+    )

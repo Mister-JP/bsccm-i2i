@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - _self_
+
+task_name: eval
+
+eval:
+  run_dir: REQUIRED_RUN_DIR
+  checkpoint: best
+  device: auto
+  precision: "32"
+  limit_test_batches: 1.0

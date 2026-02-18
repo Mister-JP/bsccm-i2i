@@ -49,20 +49,15 @@ def test_run_train_writes_standardized_artifacts(tmp_path: Path, monkeypatch) ->
 
     captured: dict[str, object] = {}
 
-    class _FakeDataModule:
-        def __init__(self, **kwargs) -> None:
-            captured["indices_csv"] = kwargs["indices_csv"]
-
     class _FakeTensorBoardLogger:
         def __init__(self, **kwargs) -> None:
             captured["tb"] = kwargs
 
     class _FakeTrainer:
-        def __init__(self, **kwargs) -> None:
+        def __init__(self) -> None:
             self.callback_metrics = {"loss/val": torch.tensor(0.25)}
             self.current_epoch = 0
             self.global_step = 2
-            captured["trainer_kwargs"] = kwargs
 
         def fit(self, model, datamodule) -> None:
             captured["fit_model"] = model
@@ -75,9 +70,17 @@ def test_run_train_writes_standardized_artifacts(tmp_path: Path, monkeypatch) ->
         (env_dir / "pip_freeze.txt").write_text("pkg==1.0.0\n", encoding="utf-8")
         (env_dir / "system.json").write_text("{}", encoding="utf-8")
 
-    monkeypatch.setattr(train_runner, "BSCCM23to6DataModule", _FakeDataModule)
+    monkeypatch.setattr(
+        train_runner,
+        "build_datamodule_from_train_config",
+        lambda _train_cfg, indices_csv: captured.update({"indices_csv": indices_csv}) or object(),
+    )
+    monkeypatch.setattr(
+        train_runner,
+        "make_train_trainer",
+        lambda **kwargs: captured.update({"trainer_kwargs": kwargs}) or _FakeTrainer(),
+    )
     monkeypatch.setattr(train_runner, "TensorBoardLogger", _FakeTensorBoardLogger)
-    monkeypatch.setattr(train_runner.pl, "Trainer", _FakeTrainer)
     monkeypatch.setattr(train_runner, "write_env_snapshot", _fake_write_env_snapshot)
 
     run_dir = train_runner.run_train(_make_train_cfg())
@@ -118,7 +121,11 @@ def test_run_train_respects_logger_and_checkpoint_toggles(tmp_path: Path, monkey
     )
     monkeypatch.setattr(train_runner, "validate_split_matches_config", lambda **_: None)
     monkeypatch.setattr(train_runner, "build_model", lambda _model_cfg: object())
-    monkeypatch.setattr(train_runner, "BSCCM23to6DataModule", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        train_runner,
+        "build_datamodule_from_train_config",
+        lambda _train_cfg, indices_csv: object(),
+    )
     monkeypatch.setattr(
         train_runner,
         "write_env_snapshot",
@@ -128,16 +135,19 @@ def test_run_train_respects_logger_and_checkpoint_toggles(tmp_path: Path, monkey
     captured: dict[str, object] = {}
 
     class _FakeTrainer:
-        def __init__(self, **kwargs) -> None:
+        def __init__(self) -> None:
             self.callback_metrics = {}
             self.current_epoch = 0
             self.global_step = 0
-            captured["kwargs"] = kwargs
 
         def fit(self, model, datamodule) -> None:
             captured["fit"] = (model, datamodule)
 
-    monkeypatch.setattr(train_runner.pl, "Trainer", _FakeTrainer)
+    monkeypatch.setattr(
+        train_runner,
+        "make_train_trainer",
+        lambda **kwargs: captured.update({"kwargs": kwargs}) or _FakeTrainer(),
+    )
 
     cfg = _make_train_cfg()
     cfg.trainer.logger = False

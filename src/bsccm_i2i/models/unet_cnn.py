@@ -138,28 +138,44 @@ class UNetCNNModule(pl.LightningModule):
         self.log("loss/train", loss, prog_bar=False, on_step=True, on_epoch=True)
         return loss
 
-    def validation_step(
-        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    def _shared_eval_step(
+        self,
+        batch: tuple[torch.Tensor, torch.Tensor],
+        *,
+        stage: str,
+        cache_for_viz: bool,
     ) -> torch.Tensor:
-        del batch_idx
         x, y = batch
         y_hat, loss = self._forward_and_loss(batch)
-        self.log("loss/val", loss, prog_bar=False, on_step=False, on_epoch=True)
+        self.log(f"loss/{stage}", loss, prog_bar=False, on_step=False, on_epoch=True)
         metrics = self.val_metrics.compute(y_hat, y)
         for key, value in metrics.items():
             self.log(
-                f"metrics/val/{key}",
+                f"metrics/{stage}/{key}",
                 value,
                 prog_bar=False,
                 on_step=False,
                 on_epoch=True,
             )
-        self._viz_cache = {
-            "x": x.detach(),
-            "y": y.detach(),
-            "y_hat": y_hat.detach(),
-        }
+        if cache_for_viz:
+            self._viz_cache = {
+                "x": x.detach(),
+                "y": y.detach(),
+                "y_hat": y_hat.detach(),
+            }
         return loss
+
+    def validation_step(
+        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        del batch_idx
+        return self._shared_eval_step(batch, stage="val", cache_for_viz=True)
+
+    def test_step(
+        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        del batch_idx
+        return self._shared_eval_step(batch, stage="test", cache_for_viz=False)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)

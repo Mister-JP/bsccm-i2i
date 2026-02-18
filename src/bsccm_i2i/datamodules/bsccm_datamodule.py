@@ -6,6 +6,7 @@ import logging
 import os
 import random
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,18 @@ _STAGE_TO_SPLITS: dict[str | None, tuple[str, ...]] = {
     "test": ("test",),
     "predict": ("test",),
 }
+
+
+def _seed_worker(worker_id: int, *, base_seed: int) -> None:
+    """Seed worker-local RNGs for deterministic multi-worker data loading."""
+    worker_seed = int(base_seed) + int(worker_id)
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+    try:
+        import numpy as np
+    except ModuleNotFoundError:
+        return
+    np.random.seed(worker_seed % (2**32))
 
 
 def is_dataset_root(path: Path) -> bool:
@@ -153,6 +166,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
         self.log_progress = bool(log_progress)
 
         self._bsccm_client: Any | None = None
+        self._dataset_root: Path | None = None
         self._split_indices: dict[str, list[int]] | None = None
         self._datasets: dict[str, BSCCM23to6Dataset | None] = {
             "train": None,
@@ -179,6 +193,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             dataset_variant=self.dataset_variant,
             log_fn=self._log,
         )
+        self._dataset_root = dataset_root
         self._log(f"Opening BSCCM client at {dataset_root}")
         self._bsccm_client = bsccm.BSCCM(str(dataset_root))
         self._log("BSCCM client ready")
@@ -260,6 +275,8 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
                 bsccm_client=bsccm_client,
                 indices=selected_indices,
             )
+            if self._dataset_root is not None and hasattr(dataset, "set_dataset_root"):
+                dataset.set_dataset_root(str(self._dataset_root))
             self._datasets[split_name] = dataset
         self._log("Requested datasets initialized")
 
@@ -292,20 +309,9 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             generator=generator,
-            worker_init_fn=self._seed_worker,
+            worker_init_fn=partial(_seed_worker, base_seed=self.seed),
             persistent_workers=self.num_workers > 0,
         )
-
-    def _seed_worker(self, worker_id: int) -> None:
-        """Seed worker-local RNGs for deterministic multi-worker data loading."""
-        worker_seed = self.seed + int(worker_id)
-        random.seed(worker_seed)
-        torch.manual_seed(worker_seed)
-        try:
-            import numpy as np
-        except ModuleNotFoundError:
-            return
-        np.random.seed(worker_seed % (2**32))
 
     def train_dataloader(self) -> Any:
         """Return the training dataloader, initializing datasets on first call."""

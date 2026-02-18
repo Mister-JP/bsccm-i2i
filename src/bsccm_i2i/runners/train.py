@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import csv
 import logging
-import random
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from bsccm_i2i.callbacks import I2IVizCallback
-from bsccm_i2i.config.schema import TrainConfig
-from bsccm_i2i.datamodules.bsccm_datamodule import BSCCM23to6DataModule
+from bsccm_i2i.config.schema import SplitRefCounts, TrainConfig
 from bsccm_i2i.models.registry import build_model
+from bsccm_i2i.runners.artifacts import write_split_ref
+from bsccm_i2i.runners.common import (
+    build_datamodule_from_train_config,
+    configure_torch_determinism,
+    extract_scalar_metrics,
+    make_train_trainer,
+    require_explicit_split_id,
+)
 from bsccm_i2i.runners.paths import create_run_dir, write_env_snapshot, write_json, write_yaml
 from bsccm_i2i.splits.registry import (
     load_split_indices,
@@ -26,67 +30,7 @@ from bsccm_i2i.splits.registry import (
     validate_split_matches_config,
 )
 
-REQUIRED_SPLIT_ID_PLACEHOLDER = "REQUIRED_SPLIT_ID"
 LOGGER = logging.getLogger(__name__)
-
-
-def _require_explicit_split_id(split_id: str) -> str:
-    normalized = split_id.strip()
-    if not normalized or normalized == REQUIRED_SPLIT_ID_PLACEHOLDER:
-        raise ValueError(
-            "train requires an explicit split artifact id via split.name=<SPLIT_ID>. "
-            "Run `bsccm-i2i split` first, then rerun train with the printed SPLIT_ID. "
-            "Automatic split creation during train is intentionally disabled."
-        )
-    return normalized
-
-
-def _configure_torch_determinism(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    if hasattr(torch, "use_deterministic_algorithms"):
-        torch.use_deterministic_algorithms(True, warn_only=True)
-    if hasattr(torch.backends, "cudnn"):
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-
-def _normalize_precision(raw_precision: str) -> str:
-    value = raw_precision.strip().lower()
-    if value == "32":
-        return "32-true"
-    if value == "16":
-        return "16-mixed"
-    if value == "bf16":
-        return "bf16-mixed"
-    return raw_precision
-
-
-def _resolve_accelerator(device: str) -> tuple[str, int]:
-    normalized = device.strip().lower()
-    if normalized in {"gpu", "cuda"}:
-        return "gpu", 1
-    if normalized in {"mps"}:
-        return "mps", 1
-    if normalized in {"auto"}:
-        return "auto", 1
-    return "cpu", 1
-
-
-def _extract_scalar_metrics(metrics: dict[str, Any]) -> dict[str, float]:
-    scalar_metrics: dict[str, float] = {}
-    for key, value in metrics.items():
-        if isinstance(value, torch.Tensor):
-            if value.numel() != 1:
-                continue
-            scalar_metrics[key] = float(value.detach().cpu().item())
-            continue
-        if isinstance(value, (int, float)):
-            scalar_metrics[key] = float(value)
-    return scalar_metrics
 
 
 def _write_epoch_metrics_csv(path: Path, metrics: dict[str, float]) -> None:
@@ -116,43 +60,32 @@ def run_train(train_cfg: TrainConfig) -> Path:
     write_yaml(run_dir / "config_resolved.yaml", train_cfg.model_dump(mode="json"))
     write_env_snapshot(run_dir)
 
-    split_id = _require_explicit_split_id(train_cfg.split.name)
+    split_id = require_explicit_split_id(train_cfg.split.name)
     split_dir = resolve_split_dir(split_id)
     split_metadata = load_split_metadata(split_id)
     validate_split_matches_config(split_metadata=split_metadata, train_cfg=train_cfg)
     split_indices = load_split_indices(split_id)
     indices_csv = str(split_dir / "indices.csv")
 
-    write_yaml(
-        run_dir / "split_ref.yaml",
-        {
-            "split_id": split_id,
-            "split_dir": str(split_dir),
-            "indices_csv": indices_csv,
-            "fingerprint": split_metadata["fingerprint"],
-            "counts": {
-                "train": len(split_indices["train"]),
-                "val": len(split_indices["val"]),
-                "test": len(split_indices["test"]),
-            },
-        },
+    write_split_ref(
+        run_dir=run_dir,
+        split_id=split_id,
+        split_dir=split_dir,
+        indices_csv=indices_csv,
+        fingerprint=split_metadata["fingerprint"],
+        counts=SplitRefCounts(
+            train=len(split_indices["train"]),
+            val=len(split_indices["val"]),
+            test=len(split_indices["test"]),
+        ),
     )
 
     if train_cfg.trainer.deterministic:
-        _configure_torch_determinism(seed=train_cfg.trainer.seed)
+        configure_torch_determinism(seed=train_cfg.trainer.seed)
 
-    datamodule = BSCCM23to6DataModule(
-        root_dir=train_cfg.data.root_dir,
-        dataset_variant=train_cfg.data.dataset_variant,
-        batch_size=train_cfg.data.batch_size,
-        num_workers=train_cfg.data.num_workers,
-        pin_memory=train_cfg.data.pin_memory,
-        seed=train_cfg.split.seed,
-        train_frac=train_cfg.split.train_frac,
-        val_frac=train_cfg.split.val_frac,
-        test_frac=train_cfg.split.test_frac,
+    datamodule = build_datamodule_from_train_config(
+        train_cfg,
         indices_csv=indices_csv,
-        log_progress=train_cfg.logging.data_progress,
     )
     model = build_model(train_cfg.model)
 
@@ -188,25 +121,15 @@ def run_train(train_cfg: TrainConfig) -> Path:
     else:
         logger = False
 
-    accelerator, devices = _resolve_accelerator(train_cfg.trainer.device)
-    trainer = pl.Trainer(
-        accelerator=accelerator,
-        devices=devices,
-        precision=_normalize_precision(train_cfg.trainer.precision),
-        max_epochs=train_cfg.trainer.max_epochs,
-        max_steps=train_cfg.trainer.max_steps if train_cfg.trainer.max_steps > 0 else -1,
-        overfit_batches=train_cfg.trainer.overfit_n if train_cfg.trainer.overfit_n > 0 else 0.0,
-        deterministic=train_cfg.trainer.deterministic,
-        limit_val_batches=train_cfg.trainer.limit_val_batches,
-        log_every_n_steps=train_cfg.logging.log_every_n_steps,
-        enable_checkpointing=train_cfg.trainer.enable_checkpointing,
+    trainer = make_train_trainer(
+        run_dir=run_dir,
+        train_cfg=train_cfg,
         callbacks=callbacks,
         logger=logger,
-        default_root_dir=str(run_dir),
     )
     trainer.fit(model=model, datamodule=datamodule)
 
-    final_metrics = _extract_scalar_metrics(dict(trainer.callback_metrics))
+    final_metrics = extract_scalar_metrics(dict(trainer.callback_metrics))
     final_metrics["epoch"] = float(getattr(trainer, "current_epoch", 0))
     final_metrics["global_step"] = float(getattr(trainer, "global_step", 0))
     _write_epoch_metrics_csv(run_dir / "metrics" / "epoch_metrics.csv", final_metrics)

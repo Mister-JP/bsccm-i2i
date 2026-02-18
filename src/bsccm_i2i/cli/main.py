@@ -1,4 +1,4 @@
-"""Typer CLI entrypoint with stable command surface for Story 2."""
+"""Typer CLI entrypoint with stable command surface."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 
 from bsccm_i2i import __version__
 from bsccm_i2i.config.loader import load_config, to_resolved_dict
-from bsccm_i2i.config.schema import SplitTaskConfig, TrainConfig
+from bsccm_i2i.config.schema import EvalTaskConfig, SplitTaskConfig, TrainConfig
+from bsccm_i2i.runners.eval import run_eval
 from bsccm_i2i.runners.train import run_train
 from bsccm_i2i.splits.builder import build_split_artifact
 
@@ -117,7 +118,14 @@ def configure_prefixed_logging(
 
 def _run_eval(config: ConfigPath, overrides: Overrides) -> None:
     _validate_config_or_overrides(config=config, overrides=overrides)
-    typer.echo("CALLED eval")
+    hydra_cfg = load_config(config_path=config, config_name="task/eval", overrides=overrides or [])
+    eval_task_cfg = EvalTaskConfig.model_validate(to_resolved_dict(hydra_cfg))
+    try:
+        metrics_path = run_eval(eval_task_cfg)
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"EVAL_RUN_DIR {eval_task_cfg.eval.run_dir}")
+    typer.echo(f"EVAL_METRICS {metrics_path}")
 
 
 def _run_report(config: ConfigPath, overrides: Overrides) -> None:

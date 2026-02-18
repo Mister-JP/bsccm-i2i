@@ -24,19 +24,10 @@ def test_subcommand_help_exits_zero() -> None:
         assert result.exit_code == 0
 
 
-def test_eval_and_report_print_deterministic_called_message(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
+def test_report_prints_deterministic_called_message(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
 
-    expected = {
-        "eval": "CALLED eval",
-        "report": "CALLED report",
-    }
-
-    for command, line in expected.items():
-        result = runner.invoke(app, [command])
-        assert result.exit_code == 0
-        assert line in result.stdout
+    result = runner.invoke(app, ["report"])
+    assert result.exit_code == 0
+    assert "CALLED report" in result.stdout
