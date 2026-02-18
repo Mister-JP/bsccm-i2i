@@ -34,7 +34,9 @@ class ModelConfig(BaseModel):
     name: str
     in_channels: int = 23
     out_channels: int = 6
-    base_channels: int
+    base_channels: int = 32
+    lr: float = 1e-3
+    weight_decay: float = 0.0
 
 
 class TrainerConfig(BaseModel):
