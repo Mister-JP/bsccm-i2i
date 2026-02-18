@@ -1,6 +1,6 @@
 max_epochs: 100
 max_steps: 0
-device: cpu
+device: auto
 precision: "32"
 overfit_n: 0
 seed: 123

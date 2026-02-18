@@ -54,15 +54,20 @@ def normalize_precision(raw_precision: str) -> str:
     return raw_precision
 
 
-def resolve_accelerator(device: str) -> tuple[str, int]:
+def resolve_accelerator(device: str) -> tuple[str, int | str]:
     """Resolve trainer accelerator/devices pair from user device config."""
     normalized = device.strip().lower()
     if normalized in {"gpu", "cuda"}:
-        return "gpu", 1
+        return "gpu", "auto"
     if normalized in {"mps"}:
         return "mps", 1
     if normalized in {"auto"}:
-        return "auto", 1
+        if torch.cuda.is_available():
+            return "gpu", "auto"
+        mps_backend = getattr(torch.backends, "mps", None)
+        if mps_backend and mps_backend.is_available():
+            return "mps", 1
+        return "cpu", 1
     return "cpu", 1
 
 
