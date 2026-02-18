@@ -3,4 +3,5 @@ seed: 42
 train_frac: 0.8
 val_frac: 0.1
 test_frac: 0.1
-name: test_random_80_10_10
+# Placeholder on purpose: train must receive an explicit split artifact id.
+name: REQUIRED_SPLIT_ID

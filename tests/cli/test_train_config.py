@@ -102,3 +102,21 @@ def test_split_command_prints_artifact_summary(tmp_path: Path, monkeypatch) -> N
     assert "SPLIT_ID abc" in result.stdout
     assert "SPLIT_DIR artifacts/splits/abc" in result.stdout
     assert "SPLIT_COUNTS train=80 val=10 test=10" in result.stdout
+
+
+def test_train_requires_explicit_split_artifact_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "train",
+            "experiment=baseline_unet",
+            "trainer.max_epochs=1",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "explicit split artifact id" in result.output
+    assert "split.name=<SPLIT_ID>" in result.output

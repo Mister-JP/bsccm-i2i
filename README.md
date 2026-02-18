@@ -89,22 +89,29 @@ BSCCM_DRYAD_TOKEN=your_token_here
 
 `bsccm-i2i` loads `.env` automatically at CLI startup.
 
+Split-first workflow (required before `train`):
+
+```bash
+bsccm-i2i split
+# Copy SPLIT_ID from command output
+```
+
 Example smoke run using auto-download:
 
 ```bash
-bsccm-i2i train experiment=baseline_unet data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
+bsccm-i2i train experiment=baseline_unet split.name=<SPLIT_ID> data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
 ```
 
 Enable datamodule progress logs during setup/loading:
 
 ```bash
-bsccm-i2i train experiment=baseline_unet logging.data_progress=true data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
+bsccm-i2i train experiment=baseline_unet split.name=<SPLIT_ID> logging.data_progress=true data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
 ```
 
 Example smoke run with an existing local dataset path (no download):
 
 ```bash
-bsccm-i2i train experiment=baseline_unet data.root_dir=/ABS/PATH/TO/BSCCM-tiny data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
+bsccm-i2i train experiment=baseline_unet split.name=<SPLIT_ID> data.root_dir=/ABS/PATH/TO/BSCCM-tiny data.num_workers=0 trainer.smoke=true trainer.max_epochs=1
 ```
 
 ## Dependency Maintenance (Maintainers Only)

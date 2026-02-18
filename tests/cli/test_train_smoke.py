@@ -51,6 +51,7 @@ def test_train_smoke_with_max_steps_invokes_loader(tmp_path: Path, monkeypatch) 
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.max_steps=2",
             "trainer.max_epochs=1",
         ],
@@ -79,6 +80,7 @@ def test_train_smoke_true_defaults_to_two_steps(tmp_path: Path, monkeypatch) -> 
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.smoke=true",
             "trainer.max_epochs=1",
         ],
@@ -184,6 +186,7 @@ def test_train_smoke_deterministic_flag_controls_setup(tmp_path: Path, monkeypat
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.smoke=true",
             "trainer.seed=999",
             "trainer.max_epochs=1",
@@ -213,6 +216,7 @@ def test_train_smoke_deterministic_false_skips_setup(tmp_path: Path, monkeypatch
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.smoke=true",
             "trainer.deterministic=false",
             "trainer.max_epochs=1",
@@ -238,6 +242,7 @@ def test_train_deterministic_setup_runs_without_smoke(tmp_path: Path, monkeypatc
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.seed=2468",
             "trainer.max_epochs=1",
         ],
@@ -263,6 +268,7 @@ def test_train_deterministic_false_skips_setup_without_smoke(tmp_path: Path, mon
         [
             "train",
             "experiment=baseline_unet",
+            "split.name=random_80_10_10",
             "trainer.deterministic=false",
             "trainer.max_epochs=1",
         ],

@@ -44,7 +44,7 @@ def test_build_split_artifact_writes_expected_files(tmp_path: Path, monkeypatch)
 
     task_cfg = SplitTaskConfig.model_validate(
         {
-            "task_name": "i2i_23to6",
+            "task_name": "split",
             "data": {
                 "variant": "tiny",
                 "root_dir": "data/bsccm_tiny",
@@ -61,7 +61,7 @@ def test_build_split_artifact_writes_expected_files(tmp_path: Path, monkeypatch)
                 "test_frac": 0.1,
                 "name": "random_80_10_10",
             },
-            "run": {"run_name": "i2i_23to6_split", "tags": ["split"]},
+            "run": {"run_name": "split_artifact", "tags": ["split"]},
         }
     )
     summary = builder_mod.build_split_artifact(task_cfg)

@@ -52,8 +52,9 @@ class TrainerConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     tensorboard: bool = True
-    log_every_n_steps: int
-    image_log_every_n_steps: int
+    log_every_n_steps: int = 50
+    image_log_every_n_steps: int = 200
+    num_viz_samples: int = 4
     data_progress: bool = False
 
 

@@ -30,6 +30,7 @@ DATAMODULE_LOGGER_NAME = "bsccm_i2i.datamodules.bsccm_datamodule"
 SPLITS_BUILDER_LOGGER_NAME = "bsccm_i2i.splits.builder"
 SPLITS_REGISTRY_LOGGER_NAME = "bsccm_i2i.splits.registry"
 LOGGER = logging.getLogger(__name__)
+REQUIRED_SPLIT_ID_PLACEHOLDER = "REQUIRED_SPLIT_ID"
 
 app = typer.Typer(
     name="bsccm-i2i",
@@ -61,11 +62,22 @@ def _validate_config_or_overrides(config: Path | None, overrides: list[str]) -> 
         raise typer.BadParameter("Use either --config or key=value overrides, not both.")
 
 
+def _require_explicit_split_id(split_id: str) -> str:
+    normalized = split_id.strip()
+    if not normalized or normalized == REQUIRED_SPLIT_ID_PLACEHOLDER:
+        raise typer.BadParameter(
+            "train requires an explicit split artifact id via split.name=<SPLIT_ID>. "
+            "Run `bsccm-i2i split` first, then rerun train with the printed SPLIT_ID. "
+            "Automatic split creation during train is intentionally disabled."
+        )
+    return normalized
+
+
 def _run_split(config: ConfigPath, overrides: Overrides) -> None:
     _validate_config_or_overrides(config=config, overrides=overrides)
     configure_split_logging(enabled=True)
     LOGGER.info("Starting split command with overrides=%s", overrides or [])
-    cfg = load_config(config_path=config, config_name="task/i2i_23to6", overrides=overrides or [])
+    cfg = load_config(config_path=config, config_name="task/split", overrides=overrides or [])
     task_cfg = SplitTaskConfig.model_validate(to_resolved_dict(cfg))
     summary = build_split_artifact(task_cfg)
     counts = summary["counts"]
@@ -83,8 +95,14 @@ def _run_train(config: ConfigPath, overrides: Overrides) -> None:
     train_input_config = to_resolved_dict(hydra_cfg)
     train_config = TrainConfig.model_validate(train_input_config)
     configure_split_logging(enabled=train_config.logging.data_progress)
-    split_artifact_id = train_config.split.name
-    split_artifact_dir = resolve_split_dir(split_artifact_id)
+    split_artifact_id = _require_explicit_split_id(train_config.split.name)
+    try:
+        split_artifact_dir = resolve_split_dir(split_artifact_id)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(
+            f"split artifact id {split_artifact_id!r} was not found under artifacts/splits. "
+            "Run `bsccm-i2i split` and rerun train with split.name=<SPLIT_ID>."
+        ) from exc
     split_indices_csv_path = str(split_artifact_dir / "indices.csv")
     split_artifact_metadata = load_split_metadata(split_artifact_id)
     validate_split_matches_config(split_metadata=split_artifact_metadata, train_cfg=train_config)

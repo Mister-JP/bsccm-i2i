@@ -5,9 +5,8 @@ defaults:
   - /split: random_80_10_10
   - _self_
 
-task_name: i2i_23to6
+task_name: split
 run:
-  run_name: i2i_23to6_split
+  run_name: split_artifact
   tags:
     - split
-    - i2i_23to6
