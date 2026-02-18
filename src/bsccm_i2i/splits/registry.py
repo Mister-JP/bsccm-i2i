@@ -77,9 +77,11 @@ def validate_split_matches_config(split_metadata: dict[str, Any], train_cfg: Tra
         raise ValueError("split metadata is missing split.json content")
 
     mismatches: list[str] = []
-    if split_payload.get("variant") != train_cfg.data.variant:
+    if split_payload.get("dataset_variant") != train_cfg.data.dataset_variant:
         mismatches.append(
-            f"variant split={split_payload.get('variant')!r} config={train_cfg.data.variant!r}"
+            "dataset_variant "
+            f"split={split_payload.get('dataset_variant')!r} "
+            f"config={train_cfg.data.dataset_variant!r}"
         )
     if split_payload.get("strategy") != train_cfg.split.strategy:
         mismatches.append(

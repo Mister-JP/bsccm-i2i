@@ -13,9 +13,8 @@ At runtime, Hydra composes YAML files into one config object, then Pydantic vali
 `train` command:
 - Entry file: `task/train.yaml`
 - Validated as: `TrainConfig`
-- Purpose (current state): validate config + split compatibility, create run directory artifacts, and optionally run a dataloader smoke loop
+- Purpose: run Lightning training from a split artifact and write standardized run artifacts
 
-Note: the full trainer wiring is not implemented yet, so `train` is currently setup/validation + smoke behavior.
 Note: `train` intentionally does not create splits. You must provide an explicit split artifact id via `split.name=<SPLIT_ID>`.
 
 ## How composition works for `train`
@@ -45,13 +44,13 @@ So the final resolved config has these top-level sections:
 - `data/`: `bsccm_tiny.yaml`
 - `split/`: `random_80_10_10.yaml`
 - `model/`: `baseline_unet.yaml`, `unet_cnn.yaml`
-- `trainer/`: `default.yaml`
+- `trainer/`: `default.yaml`, `smoke.yaml`
 - `logging/`: `default.yaml`
 
 ## What each section controls
 
 `data`:
-- Where the dataset is read from (`root_dir`, `variant`)
+- Where the dataset is read from (`root_dir`, `dataset_variant`)
 - DataLoader behavior (`batch_size`, `num_workers`, `pin_memory`)
 - Optional indices CSV field (`indices_csv`) at schema/datamodule level; in the current `train` CLI flow it is populated from the selected split artifact (`artifacts/splits/<split_id>/indices.csv`)
 
@@ -72,7 +71,7 @@ Constraint:
 `trainer`:
 - Runtime controls (`max_epochs`, `max_steps`, `device`, `precision`)
 - Reproducibility (`seed`, `deterministic`)
-- Fast sanity mode (`smoke`)
+- Trainer limits and toggles (`limit_val_batches`, `enable_checkpointing`, `logger`)
 
 `logging`:
 - TensorBoard enablement
@@ -99,7 +98,7 @@ Current examples where YAML overrides schema defaults:
 ## Common override patterns
 
 - Turn on progress logs: `logging.data_progress=true`
-- Run quick smoke steps: `trainer.smoke=true trainer.max_steps=2`
+- Run quick smoke steps through preset: `trainer=smoke`
 - Change batch size for a run: `data.batch_size=16`
 
 ## Expected workflow (explicit split selection)

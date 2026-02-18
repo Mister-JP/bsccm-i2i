@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class DataConfig(BaseModel):
-    variant: str
+    dataset_variant: str
     root_dir: str
     num_workers: int
     batch_size: int
@@ -47,7 +47,10 @@ class TrainerConfig(BaseModel):
     seed: int
     deterministic: bool = True
     max_steps: int = 0
-    smoke: bool = False
+    # Throttle validation[0.00, 1.00] work per run; lower for faster debug/smoke iterations.
+    limit_val_batches: float | int = 1.0 
+    enable_checkpointing: bool = True
+    logger: bool = True
 
 
 class LoggingConfig(BaseModel):

@@ -7,6 +7,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from bsccm_i2i.metrics import Fluor6Metrics
+
 
 class _DoubleConv(nn.Module):
     """Two 3x3 convolutions with ReLU activations and padding-preserved spatial shape."""
@@ -89,6 +91,7 @@ class UNetCNNModule(pl.LightningModule):
             base_channels=base_channels,
         )
         self.loss_fn = nn.L1Loss()
+        self.val_metrics = Fluor6Metrics()
         self.lr = float(lr)
         self.weight_decay = float(weight_decay)
         self.save_hyperparameters()
@@ -112,7 +115,9 @@ class UNetCNNModule(pl.LightningModule):
                 f"[B, {self.EXPECTED_TARGET_CHANNELS}, H, W], got {tuple(y.shape)}"
             )
 
-    def _compute_loss(self, batch: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+    def _forward_and_loss(
+        self, batch: tuple[torch.Tensor, torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         x, y = batch
         self._validate_batch(x, y)
         y_hat = self(x)
@@ -123,13 +128,13 @@ class UNetCNNModule(pl.LightningModule):
         loss = self.loss_fn(y_hat, y)
         if not bool(torch.isfinite(loss).all().item()):
             raise RuntimeError("Non-finite loss encountered.")
-        return loss
+        return y_hat, loss
 
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         del batch_idx
-        loss = self._compute_loss(batch)
+        _, loss = self._forward_and_loss(batch)
         self.log("loss/train", loss, prog_bar=False, on_step=True, on_epoch=True)
         return loss
 
@@ -137,8 +142,23 @@ class UNetCNNModule(pl.LightningModule):
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         del batch_idx
-        loss = self._compute_loss(batch)
+        x, y = batch
+        y_hat, loss = self._forward_and_loss(batch)
         self.log("loss/val", loss, prog_bar=False, on_step=False, on_epoch=True)
+        metrics = self.val_metrics.compute(y_hat, y)
+        for key, value in metrics.items():
+            self.log(
+                f"metrics/val/{key}",
+                value,
+                prog_bar=False,
+                on_step=False,
+                on_epoch=True,
+            )
+        self._viz_cache = {
+            "x": x.detach(),
+            "y": y.detach(),
+            "y_hat": y_hat.detach(),
+        }
         return loss
 
     def configure_optimizers(self) -> torch.optim.Optimizer:

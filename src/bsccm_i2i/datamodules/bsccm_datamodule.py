@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import bsccm
+import pytorch_lightning as pl
 import torch
 from dotenv import load_dotenv
 
@@ -18,6 +19,13 @@ from bsccm_i2i.splits.io import read_indices_csv
 from bsccm_i2i.splits.strategies import random_fraction_split
 
 LOGGER = logging.getLogger(__name__)
+_STAGE_TO_SPLITS: dict[str | None, tuple[str, ...]] = {
+    None: ("train", "val", "test"),
+    "fit": ("train", "val"),
+    "validate": ("val",),
+    "test": ("test",),
+    "predict": ("test",),
+}
 
 
 def is_dataset_root(path: Path) -> bool:
@@ -50,7 +58,7 @@ def get_dryad_token() -> str | None:
 
 
 def resolve_dataset_root(
-    root_dir: str, variant: str, log_fn: Callable[[str], None] | None = None
+    root_dir: str, dataset_variant: str, log_fn: Callable[[str], None] | None = None
 ) -> Path:
     """
     Resolve a usable BSCCM dataset directory.
@@ -65,12 +73,12 @@ def resolve_dataset_root(
             log_fn(f"Using existing dataset root at {existing}")
         return existing
 
-    tiny_variant = variant.strip().lower() == "tiny"
+    tiny_variant = dataset_variant.strip().lower() == "tiny"
     dryad_token = get_dryad_token()
     if log_fn is not None:
         token_state = "present" if dryad_token is not None else "missing"
         log_fn(
-            f"No existing dataset found at {path}; downloading variant={variant!r} "
+            f"No existing dataset found at {path}; downloading dataset_variant={dataset_variant!r} "
             f"(token={token_state})"
         )
     download_kwargs: dict[str, object] = {
@@ -112,14 +120,14 @@ def resolve_dataset_root(
     )
 
 
-class BSCCM23to6DataModule:
+class BSCCM23to6DataModule(pl.LightningDataModule):
     """Simple datamodule that creates train/val/test dataloaders for BSCCM."""
 
     def __init__(
         self,
         *,
         root_dir: str,
-        variant: str,
+        dataset_variant: str,
         batch_size: int,
         num_workers: int,
         pin_memory: bool,
@@ -131,8 +139,9 @@ class BSCCM23to6DataModule:
         log_progress: bool = False,
     ) -> None:
         """Store dataloader/split settings and prepare lazy dataset initialization."""
+        super().__init__()
         self.root_dir = root_dir
-        self.variant = variant
+        self.dataset_variant = dataset_variant
         self.batch_size = int(batch_size)
         self.num_workers = int(num_workers)
         self.pin_memory = bool(pin_memory)
@@ -143,42 +152,49 @@ class BSCCM23to6DataModule:
         self.indices_csv = indices_csv
         self.log_progress = bool(log_progress)
 
-        self._backend: Any | None = None
-        self._train_dataset: BSCCM23to6Dataset | None = None
-        self._val_dataset: BSCCM23to6Dataset | None = None
-        self._test_dataset: BSCCM23to6Dataset | None = None
+        self._bsccm_client: Any | None = None
+        self._split_indices: dict[str, list[int]] | None = None
+        self._datasets: dict[str, BSCCM23to6Dataset | None] = {
+            "train": None,
+            "val": None,
+            "test": None,
+        }
 
     def _log(self, message: str) -> None:
         """Emit datamodule progress logs when enabled by config."""
         if self.log_progress:
             LOGGER.info(message)
 
-    def _build_backend(self) -> Any:
-        """Instantiate and memoize a `bsccm.BSCCM` backend bound to resolved dataset root."""
-        if self._backend is not None:
-            return self._backend
+    def _build_bsccm_client(self) -> Any:
+        """Instantiate and memoize a `bsccm.BSCCM` client bound to resolved dataset root."""
+        if self._bsccm_client is not None:
+            return self._bsccm_client
 
-        self._log(f"Resolving dataset root from {self.root_dir!r} (variant={self.variant!r})")
-        dataset_root = resolve_dataset_root(
-            root_dir=self.root_dir, variant=self.variant, log_fn=self._log
+        self._log(
+            "Resolving dataset root from "
+            f"{self.root_dir!r} (dataset_variant={self.dataset_variant!r})"
         )
-        self._log(f"Opening BSCCM backend at {dataset_root}")
-        self._backend = bsccm.BSCCM(str(dataset_root))
-        self._log("BSCCM backend ready")
-        return self._backend
+        dataset_root = resolve_dataset_root(
+            root_dir=self.root_dir,
+            dataset_variant=self.dataset_variant,
+            log_fn=self._log,
+        )
+        self._log(f"Opening BSCCM client at {dataset_root}")
+        self._bsccm_client = bsccm.BSCCM(str(dataset_root))
+        self._log("BSCCM client ready")
+        return self._bsccm_client
 
-    def setup(self) -> None:
-        """
-        Build train/val/test `BSCCM23to6Dataset` objects once.
+    def _required_splits(self, stage: str | None) -> tuple[str, ...]:
+        normalized = None if stage is None else stage.strip().lower()
+        try:
+            return _STAGE_TO_SPLITS[normalized]
+        except KeyError as exc:
+            allowed = ", ".join(repr(name) for name in _STAGE_TO_SPLITS)
+            raise ValueError(f"Unsupported stage={stage!r}. Expected one of: {allowed}") from exc
 
-        Uses CSV-provided indices when configured; otherwise uses backend indices and
-        deterministic fraction-based splitting.
-        """
-        if self._train_dataset is not None:
-            return
-
-        self._log("Starting datamodule setup")
-        backend = self._build_backend()
+    def _resolve_split_indices(self) -> dict[str, list[int]]:
+        if self._split_indices is not None:
+            return self._split_indices
 
         if self.indices_csv:
             self._log(f"Using indices CSV: {self.indices_csv}")
@@ -200,8 +216,9 @@ class BSCCM23to6DataModule:
                     seed=self.seed,
                 )
         else:
-            self._log("Using backend indices with seeded fraction split")
-            all_indices = [int(value) for value in backend.get_indices(shuffle=False)]
+            self._log("Using BSCCM client indices with seeded fraction split")
+            bsccm_client = self._build_bsccm_client()
+            all_indices = [int(value) for value in bsccm_client.get_indices(shuffle=False)]
             train_indices, val_indices, test_indices = random_fraction_split(
                 indices=all_indices,
                 train_frac=self.train_frac,
@@ -213,14 +230,38 @@ class BSCCM23to6DataModule:
             "Split sizes: "
             f"train={len(train_indices)} val={len(val_indices)} test={len(test_indices)}"
         )
-        self._train_dataset = BSCCM23to6Dataset(backend=backend, indices=train_indices)
-        self._val_dataset = BSCCM23to6Dataset(
-            backend=backend, indices=val_indices or train_indices[:1]
-        )
-        self._test_dataset = BSCCM23to6Dataset(
-            backend=backend, indices=test_indices or train_indices[:1]
-        )
-        self._log("Datasets initialized")
+        self._split_indices = {
+            "train": train_indices,
+            "val": val_indices,
+            "test": test_indices,
+        }
+        return self._split_indices
+
+    def setup(self, stage: str | None = None) -> None:
+        """
+        Build only the datasets needed for the current stage.
+
+        Split indices are computed once and cached. Individual datasets are created
+        lazily, so validate/test-only workflows do not force train dataset creation.
+        """
+        self._log(f"Starting datamodule setup (stage={stage!r})")
+        required_splits = self._required_splits(stage)
+        split_indices = self._resolve_split_indices()
+        bsccm_client: Any | None = None
+        for split_name in required_splits:
+            if self._datasets[split_name] is not None:
+                continue
+            selected_indices = split_indices.get(split_name, [])
+            if not selected_indices:
+                raise ValueError(f"{split_name} split is empty")
+            if bsccm_client is None:
+                bsccm_client = self._build_bsccm_client()
+            dataset = BSCCM23to6Dataset(
+                bsccm_client=bsccm_client,
+                indices=selected_indices,
+            )
+            self._datasets[split_name] = dataset
+        self._log("Requested datasets initialized")
 
     def _make_dataloader(self, dataset: BSCCM23to6Dataset, *, shuffle: bool) -> Any:
         """
@@ -268,21 +309,24 @@ class BSCCM23to6DataModule:
 
     def train_dataloader(self) -> Any:
         """Return the training dataloader, initializing datasets on first call."""
-        self.setup()
-        if self._train_dataset is None:
+        self.setup("fit")
+        dataset = self._datasets["train"]
+        if dataset is None:
             raise RuntimeError("train dataset is not initialized")
-        return self._make_dataloader(self._train_dataset, shuffle=True)
+        return self._make_dataloader(dataset, shuffle=True)
 
     def val_dataloader(self) -> Any:
         """Return the validation dataloader, initializing datasets on first call."""
-        self.setup()
-        if self._val_dataset is None:
+        self.setup("validate")
+        dataset = self._datasets["val"]
+        if dataset is None:
             raise RuntimeError("val dataset is not initialized")
-        return self._make_dataloader(self._val_dataset, shuffle=False)
+        return self._make_dataloader(dataset, shuffle=False)
 
     def test_dataloader(self) -> Any:
         """Return the test dataloader, initializing datasets on first call."""
-        self.setup()
-        if self._test_dataset is None:
+        self.setup("test")
+        dataset = self._datasets["test"]
+        if dataset is None:
             raise RuntimeError("test dataset is not initialized")
-        return self._make_dataloader(self._test_dataset, shuffle=False)
+        return self._make_dataloader(dataset, shuffle=False)

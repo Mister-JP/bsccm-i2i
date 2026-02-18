@@ -15,15 +15,15 @@ NORMALIZATION_DENOMINATOR = 4095.0
 class BSCCM23to6Dataset:
     """Dataset yielding `(x, y)` where x has 23 channels and y has 6 channels."""
 
-    def __init__(self, backend: Any, indices: list[int]):
-        """Create a dataset wrapper over BSCCM backend for selected global indices."""
-        self.backend = backend
+    def __init__(self, bsccm_client: Any, indices: list[int]):
+        """Create a dataset wrapper over BSCCM client for selected global indices."""
+        self.bsccm_client = bsccm_client
         self.indices = [int(value) for value in indices]
         if not self.indices:
             raise ValueError("dataset indices must be non-empty")
 
-        self.input_channels = list(getattr(backend, "led_array_channel_names", []))
-        self.target_channels = list(getattr(backend, "fluor_channel_names", []))
+        self.input_channels = list(getattr(bsccm_client, "led_array_channel_names", []))
+        self.target_channels = list(getattr(bsccm_client, "fluor_channel_names", []))
 
         if len(self.input_channels) != EXPECTED_INPUT_CHANNELS:
             raise ValueError(
@@ -61,7 +61,7 @@ class BSCCM23to6Dataset:
         """
         channel_tensors = []
         for channel in channels:
-            image = self.backend.read_image(index, channel, copy=False)
+            image = self.bsccm_client.read_image(index, channel, copy=False)
             tensor = torch.as_tensor(image, dtype=torch.float32)
             if tuple(tensor.shape) != EXPECTED_SPATIAL_SHAPE:
                 raise ValueError(

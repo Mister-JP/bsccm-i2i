@@ -1,4 +1,4 @@
-variant: tiny
+dataset_variant: tiny
 root_dir: data/bsccm_tiny
 num_workers: 4
 batch_size: 8

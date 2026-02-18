@@ -34,7 +34,9 @@ def _split_artifacts_root() -> Path:
 def _build_split_id(split_task_config: SplitTaskConfig, now: dt.datetime) -> str:
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     return (
-        f"bsccm_23to6__{split_task_config.data.variant}__{split_task_config.split.strategy}__"
+        "bsccm_23to6__"
+        f"{split_task_config.data.dataset_variant}__"
+        f"{split_task_config.split.strategy}__"
         f"seed{split_task_config.split.seed}__{timestamp}"
     )
 
@@ -53,11 +55,11 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
     LOGGER.info("Creating split artifact: split_id=%s dir=%s", split_id, artifact_dir)
 
     dataset_root = resolve_dataset_root(
-        split_task_config.data.root_dir, split_task_config.data.variant
+        split_task_config.data.root_dir, split_task_config.data.dataset_variant
     )
     LOGGER.info("Resolved dataset root for split build: %s", dataset_root)
-    backend = bsccm.BSCCM(str(dataset_root))
-    all_indices = [int(value) for value in backend.get_indices(shuffle=False)]
+    bsccm_client = bsccm.BSCCM(str(dataset_root))
+    all_indices = [int(value) for value in bsccm_client.get_indices(shuffle=False)]
 
     strategy = split_task_config.split.strategy.strip().lower()
     if strategy != "random":
@@ -85,7 +87,7 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
         "train_frac": split_task_config.split.train_frac,
         "val_frac": split_task_config.split.val_frac,
         "test_frac": split_task_config.split.test_frac,
-        "variant": split_task_config.data.variant,
+        "dataset_variant": split_task_config.data.dataset_variant,
         "created_at": created_at.isoformat(timespec="seconds"),
     }
     write_json(artifact_dir / "split.json", split_definition)
@@ -93,7 +95,7 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
     # Fingerprint captures immutable dataset identity so future runs can verify
     # they reference the same underlying BSCCM files, not just the same split id.
     fingerprint = {
-        "variant": split_task_config.data.variant,
+        "dataset_variant": split_task_config.data.dataset_variant,
         "bsccm_package_version": getattr(bsccm, "__version__", None),
         "bsccm_index_csv_sha256": _compute_sha256(dataset_root / "BSCCM_index.csv"),
         "bsccm_global_metadata_sha256": _compute_sha256(

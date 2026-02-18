@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from bsccm_i2i.datamodules import bsccm_datamodule as datamodule_mod
 from bsccm_i2i.splits.io import read_indices_csv
 from bsccm_i2i.splits.strategies import random_fraction_split
@@ -63,7 +65,10 @@ def test_resolve_dataset_root_passes_token_when_present(tmp_path: Path, monkeypa
     monkeypatch.setattr(datamodule_mod, "bsccm", fake_bsccm)
     monkeypatch.setenv("BSCCM_DRYAD_TOKEN", "token-xyz")
 
-    resolved = datamodule_mod.resolve_dataset_root(str(tmp_path / "missing_root"), variant="tiny")
+    resolved = datamodule_mod.resolve_dataset_root(
+        str(tmp_path / "missing_root"),
+        dataset_variant="tiny",
+    )
     assert resolved == dataset_root
     assert fake_bsccm.last_kwargs["token"] == "token-xyz"
 
@@ -89,7 +94,7 @@ def test_resolve_dataset_root_omits_token_when_missing(tmp_path: Path, monkeypat
     monkeypatch.setenv("BSCCM_DRYAD_TOKEN", "")
 
     resolved = datamodule_mod.resolve_dataset_root(
-        str(tmp_path / "missing_root_2"), variant="tiny"
+        str(tmp_path / "missing_root_2"), dataset_variant="tiny"
     )
     assert resolved == dataset_root
     assert "token" not in fake_bsccm.last_kwargs
@@ -110,7 +115,10 @@ def test_resolve_dataset_root_uses_nested_existing_root_without_download(
 
     monkeypatch.setattr(datamodule_mod, "bsccm", _FakeBSCCMModule())
 
-    resolved = datamodule_mod.resolve_dataset_root(str(tmp_path / "bsccm_tiny"), variant="tiny")
+    resolved = datamodule_mod.resolve_dataset_root(
+        str(tmp_path / "bsccm_tiny"),
+        dataset_variant="tiny",
+    )
     assert resolved == nested_root
 
 
@@ -141,7 +149,7 @@ def test_make_dataloader_uses_seeded_generator_for_shuffle(monkeypatch) -> None:
     monkeypatch.setattr(datamodule_mod, "torch", _FakeTorch)
     datamodule = datamodule_mod.BSCCM23to6DataModule(
         root_dir="data/bsccm_tiny",
-        variant="tiny",
+        dataset_variant="tiny",
         batch_size=8,
         num_workers=0,
         pin_memory=False,
@@ -163,3 +171,124 @@ def test_make_dataloader_uses_seeded_generator_for_shuffle(monkeypatch) -> None:
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs["generator"] is None
+
+
+def test_setup_validate_only_initializes_val_dataset(tmp_path: Path, monkeypatch) -> None:
+    csv_path = tmp_path / "indices.csv"
+    csv_path.write_text(
+        "global_index,split\n"
+        "101,train\n"
+        "102,val\n"
+        "103,test\n",
+        encoding="utf-8",
+    )
+    created_indices: list[list[int]] = []
+
+    class _FakeDataset:
+        def __init__(self, bsccm_client, indices: list[int]) -> None:
+            del bsccm_client
+            self.indices = list(indices)
+            created_indices.append(self.indices)
+
+        def __len__(self) -> int:
+            return len(self.indices)
+
+    monkeypatch.setattr(datamodule_mod, "BSCCM23to6Dataset", _FakeDataset)
+
+    datamodule = datamodule_mod.BSCCM23to6DataModule(
+        root_dir="data/bsccm_tiny",
+        dataset_variant="tiny",
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        seed=42,
+        train_frac=0.8,
+        val_frac=0.1,
+        test_frac=0.1,
+        indices_csv=str(csv_path),
+    )
+    monkeypatch.setattr(datamodule, "_build_bsccm_client", lambda: object())
+
+    datamodule.setup("validate")
+
+    assert datamodule._datasets["train"] is None
+    assert datamodule._datasets["val"] is not None
+    assert datamodule._datasets["test"] is None
+    assert created_indices == [[102]]
+
+
+def test_setup_fit_initializes_train_and_val_only(tmp_path: Path, monkeypatch) -> None:
+    csv_path = tmp_path / "indices.csv"
+    csv_path.write_text(
+        "global_index,split\n"
+        "1,train\n"
+        "2,train\n"
+        "3,val\n",
+        encoding="utf-8",
+    )
+    created_indices: list[list[int]] = []
+
+    class _FakeDataset:
+        def __init__(self, bsccm_client, indices: list[int]) -> None:
+            del bsccm_client
+            self.indices = list(indices)
+            created_indices.append(self.indices)
+
+        def __len__(self) -> int:
+            return len(self.indices)
+
+    monkeypatch.setattr(datamodule_mod, "BSCCM23to6Dataset", _FakeDataset)
+
+    datamodule = datamodule_mod.BSCCM23to6DataModule(
+        root_dir="data/bsccm_tiny",
+        dataset_variant="tiny",
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        seed=42,
+        train_frac=0.8,
+        val_frac=0.1,
+        test_frac=0.1,
+        indices_csv=str(csv_path),
+    )
+    monkeypatch.setattr(datamodule, "_build_bsccm_client", lambda: object())
+
+    datamodule.setup("fit")
+    datamodule.setup("fit")
+
+    assert datamodule._datasets["train"] is not None
+    assert datamodule._datasets["val"] is not None
+    assert datamodule._datasets["test"] is None
+    assert created_indices == [[1, 2], [3]]
+
+
+def test_setup_validate_fails_when_val_split_is_empty(tmp_path: Path, monkeypatch) -> None:
+    csv_path = tmp_path / "indices.csv"
+    csv_path.write_text(
+        "global_index,split\n"
+        "1,train\n"
+        "2,train\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        datamodule_mod,
+        "BSCCM23to6Dataset",
+        lambda bsccm_client, indices: object(),
+    )
+
+    datamodule = datamodule_mod.BSCCM23to6DataModule(
+        root_dir="data/bsccm_tiny",
+        dataset_variant="tiny",
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        seed=42,
+        train_frac=0.8,
+        val_frac=0.1,
+        test_frac=0.1,
+        indices_csv=str(csv_path),
+    )
+    monkeypatch.setattr(datamodule, "_build_bsccm_client", lambda: object())
+
+    with pytest.raises(ValueError, match="val split is empty"):
+        datamodule.setup("validate")

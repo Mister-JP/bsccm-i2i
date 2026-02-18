@@ -13,6 +13,7 @@ from bsccm_i2i.splits.registry import (
     load_split_metadata,
     validate_split_matches_config,
 )
+from tests.config_builders import make_split_task_config, make_train_config
 
 
 def _write_fake_dataset_root(path: Path) -> None:
@@ -43,26 +44,10 @@ def test_build_split_artifact_writes_expected_files(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(builder_mod, "bsccm", _FakeBSCCMModule)
 
     task_cfg = SplitTaskConfig.model_validate(
-        {
-            "task_name": "split",
-            "data": {
-                "variant": "tiny",
-                "root_dir": "data/bsccm_tiny",
-                "num_workers": 0,
-                "batch_size": 8,
-                "pin_memory": False,
-                "indices_csv": None,
-            },
-            "split": {
-                "strategy": "random",
-                "seed": 42,
-                "train_frac": 0.8,
-                "val_frac": 0.1,
-                "test_frac": 0.1,
-                "name": "random_80_10_10",
-            },
-            "run": {"run_name": "split_artifact", "tags": ["split"]},
-        }
+        make_split_task_config(
+            split_name="random_80_10_10",
+            overrides={"data": {"batch_size": 8}},
+        )
     )
     summary = builder_mod.build_split_artifact(task_cfg)
 
@@ -86,7 +71,7 @@ def test_build_split_artifact_writes_expected_files(tmp_path: Path, monkeypatch)
     expected_meta_hash = hashlib.sha256(
         (dataset_root / "BSCCM_global_metadata.json").read_bytes()
     ).hexdigest()
-    assert fingerprint["variant"] == "tiny"
+    assert fingerprint["dataset_variant"] == "tiny"
     assert fingerprint["bsccm_package_version"] == "0.0-test"
     assert fingerprint["bsccm_index_csv_sha256"] == expected_index_hash
     assert fingerprint["bsccm_global_metadata_sha256"] == expected_meta_hash
@@ -116,7 +101,7 @@ def test_registry_mismatch_raises(tmp_path: Path, monkeypatch) -> None:
                 "train_frac": 0.8,
                 "val_frac": 0.1,
                 "test_frac": 0.1,
-                "variant": "tiny",
+                "dataset_variant": "tiny",
                 "created_at": "2026-02-18T00:00:00",
             }
         ),
@@ -125,7 +110,7 @@ def test_registry_mismatch_raises(tmp_path: Path, monkeypatch) -> None:
     (split_dir / "dataset_fingerprint.json").write_text(
         json.dumps(
             {
-                "variant": "tiny",
+                "dataset_variant": "tiny",
                 "bsccm_index_csv_sha256": "a",
                 "bsccm_global_metadata_sha256": "b",
             }
@@ -134,47 +119,15 @@ def test_registry_mismatch_raises(tmp_path: Path, monkeypatch) -> None:
     )
 
     train_cfg = TrainConfig.model_validate(
-        {
-            "data": {
-                "variant": "tiny",
-                "root_dir": "data/bsccm_tiny",
-                "num_workers": 0,
-                "batch_size": 8,
-                "pin_memory": False,
-                "indices_csv": None,
+        make_train_config(
+            split_name=split_id,
+            overrides={
+                "data": {"batch_size": 8},
+                "split": {"seed": 123},
+                "model": {"name": "unet"},
+                "trainer": {"seed": 7, "max_steps": 0},
             },
-            "split": {
-                "strategy": "random",
-                "seed": 123,
-                "train_frac": 0.8,
-                "val_frac": 0.1,
-                "test_frac": 0.1,
-                "name": split_id,
-            },
-            "model": {
-                "name": "unet",
-                "in_channels": 23,
-                "out_channels": 6,
-                "base_channels": 32,
-            },
-            "trainer": {
-                "max_epochs": 1,
-                "device": "cpu",
-                "precision": "32",
-                "overfit_n": 0,
-                "seed": 7,
-                "deterministic": True,
-                "max_steps": 0,
-                "smoke": False,
-            },
-            "logging": {
-                "tensorboard": True,
-                "log_every_n_steps": 10,
-                "image_log_every_n_steps": 100,
-                "data_progress": False,
-            },
-            "run": {"run_name": "baseline_unet", "tags": ["baseline"]},
-        }
+        )
     )
 
     split_metadata = load_split_metadata(split_id)
