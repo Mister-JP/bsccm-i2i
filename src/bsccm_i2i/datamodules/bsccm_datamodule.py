@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import random
 from collections.abc import Callable
@@ -14,12 +13,11 @@ import bsccm
 import pytorch_lightning as pl
 import torch
 from dotenv import load_dotenv
+from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 from bsccm_i2i.datasets.bsccm_dataset import BSCCM23to6Dataset
 from bsccm_i2i.splits.io import read_indices_csv
 from bsccm_i2i.splits.strategies import random_fraction_split
-
-LOGGER = logging.getLogger(__name__)
 _STAGE_TO_SPLITS: dict[str | None, tuple[str, ...]] = {
     None: ("train", "val", "test"),
     "fit": ("train", "val"),
@@ -177,7 +175,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
     def _log(self, message: str) -> None:
         """Emit datamodule progress logs when enabled by config."""
         if self.log_progress:
-            LOGGER.info(message)
+            rank_zero_info(message)
 
     def _build_bsccm_client(self) -> Any:
         """Instantiate and memoize a `bsccm.BSCCM` client bound to resolved dataset root."""

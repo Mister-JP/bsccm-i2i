@@ -46,6 +46,9 @@ class I2IVizCallback(pl.Callback):
         return None
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if not bool(getattr(trainer, "is_global_zero", True)):
+            return
+
         experiment = self._resolve_tb_experiment(trainer)
         if experiment is None:
             return

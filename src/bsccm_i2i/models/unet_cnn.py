@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from bsccm_i2i.metrics import Fluor6Metrics
+from bsccm_i2i.models.base_module import BaseI2IModule
 
 
 class _DoubleConv(nn.Module):
@@ -69,7 +69,7 @@ class UNetCNN(nn.Module):
         return self.out_conv(d1)
 
 
-class UNetCNNModule(pl.LightningModule):
+class UNetCNNModule(BaseI2IModule):
     """Lightning training wrapper with strict input/output and loss checks."""
 
     EXPECTED_INPUT_CHANNELS = 23
@@ -134,8 +134,13 @@ class UNetCNNModule(pl.LightningModule):
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         del batch_idx
+        x, _ = batch
         _, loss = self._forward_and_loss(batch)
-        self.log("loss/train", loss, prog_bar=False, on_step=True, on_epoch=True)
+        self.log_epoch_metric(
+            "loss/train",
+            loss,
+            batch_size=int(x.shape[0]),
+        )
         return loss
 
     def _shared_eval_step(
@@ -147,16 +152,17 @@ class UNetCNNModule(pl.LightningModule):
     ) -> torch.Tensor:
         x, y = batch
         y_hat, loss = self._forward_and_loss(batch)
-        self.log(f"loss/{stage}", loss, prog_bar=False, on_step=False, on_epoch=True)
+        self.log_epoch_metric(
+            f"loss/{stage}",
+            loss,
+            batch_size=int(x.shape[0]),
+        )
         metrics = self.val_metrics.compute(y_hat, y)
-        for key, value in metrics.items():
-            self.log(
-                f"metrics/{stage}/{key}",
-                value,
-                prog_bar=False,
-                on_step=False,
-                on_epoch=True,
-            )
+        self.log_epoch_metrics(
+            metrics,
+            prefix=f"metrics/{stage}",
+            batch_size=int(x.shape[0]),
+        )
         if cache_for_viz:
             self._viz_cache = {
                 "x": x.detach(),
