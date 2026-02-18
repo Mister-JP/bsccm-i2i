@@ -1,1 +1,1 @@
-"""Split package placeholder."""
+"""Split subsystem package."""

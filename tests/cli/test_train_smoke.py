@@ -7,14 +7,43 @@ from typer.testing import CliRunner
 from bsccm_i2i.cli import main as cli_main
 
 
+def _stub_split_registry(monkeypatch, tmp_path: Path, split_id: str = "random_80_10_10") -> Path:
+    split_dir = tmp_path / "artifacts" / "splits" / split_id
+    split_dir.mkdir(parents=True, exist_ok=True)
+    (split_dir / "indices.csv").write_text(
+        "global_index,split\n0,train\n1,train\n2,val\n3,test\n",
+        encoding="utf-8",
+    )
+    split_metadata = {
+        "split": {
+            "variant": "tiny",
+            "strategy": "random",
+            "seed": 42,
+            "train_frac": 0.8,
+            "val_frac": 0.1,
+            "test_frac": 0.1,
+        },
+        "fingerprint": {"variant": "tiny"},
+    }
+    split_indices = {"all": [0, 1, 2, 3], "train": [0, 1], "val": [2], "test": [3]}
+
+    monkeypatch.setattr(cli_main, "resolve_split_dir", lambda _split_id: split_dir)
+    monkeypatch.setattr(cli_main, "load_split_metadata", lambda _split_id: split_metadata)
+    monkeypatch.setattr(cli_main, "load_split_indices", lambda _split_id: split_indices)
+    monkeypatch.setattr(cli_main, "validate_split_matches_config", lambda **_: None)
+    return split_dir
+
+
 def test_train_smoke_with_max_steps_invokes_loader(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    split_dir = _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
-    captured: dict[str, int] = {}
+    captured: dict[str, int | str] = {}
 
-    def _fake_smoke_loader(train_cfg, max_steps: int) -> None:
+    def _fake_smoke_loader(train_cfg, max_steps: int, indices_csv: str) -> None:
         del train_cfg
         captured["max_steps"] = max_steps
+        captured["indices_csv"] = indices_csv
 
     monkeypatch.setattr(cli_main, "run_train_smoke_loader", _fake_smoke_loader)
     result = runner.invoke(
@@ -29,16 +58,19 @@ def test_train_smoke_with_max_steps_invokes_loader(tmp_path: Path, monkeypatch) 
 
     assert result.exit_code == 0
     assert captured["max_steps"] == 2
+    assert captured["indices_csv"] == str(split_dir / "indices.csv")
     assert "CALLED train" in result.stdout
 
 
 def test_train_smoke_true_defaults_to_two_steps(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
     captured: dict[str, int] = {}
 
-    def _fake_smoke_loader(train_cfg, max_steps: int) -> None:
+    def _fake_smoke_loader(train_cfg, max_steps: int, indices_csv: str) -> None:
         del train_cfg
+        del indices_csv
         captured["max_steps"] = max_steps
 
     monkeypatch.setattr(cli_main, "run_train_smoke_loader", _fake_smoke_loader)
@@ -58,7 +90,7 @@ def test_train_smoke_true_defaults_to_two_steps(tmp_path: Path, monkeypatch) -> 
 
 
 def test_train_smoke_uses_split_seed_for_datamodule(monkeypatch) -> None:
-    captured: dict[str, int | bool] = {}
+    captured: dict[str, int | bool | str] = {}
 
     class _TensorLike:
         def __init__(self, shape):
@@ -68,6 +100,7 @@ def test_train_smoke_uses_split_seed_for_datamodule(monkeypatch) -> None:
         def __init__(self, **kwargs):
             captured["seed"] = int(kwargs["seed"])
             captured["log_progress"] = bool(kwargs["log_progress"])
+            captured["indices_csv"] = str(kwargs["indices_csv"])
 
         def train_dataloader(self):
             return [(_TensorLike((1, 23, 128, 128)), _TensorLike((1, 6, 128, 128)))]
@@ -119,21 +152,28 @@ def test_train_smoke_uses_split_seed_for_datamodule(monkeypatch) -> None:
         }
     )
 
-    cli_main.run_train_smoke_loader(train_cfg=train_cfg, max_steps=1)
+    cli_main.run_train_smoke_loader(
+        train_cfg=train_cfg,
+        max_steps=1,
+        indices_csv="artifacts/splits/random_80_10_10/indices.csv",
+    )
     assert captured["seed"] == 777
     assert captured["log_progress"] is True
+    assert captured["indices_csv"] == "artifacts/splits/random_80_10_10/indices.csv"
 
 
 def test_train_smoke_deterministic_flag_controls_setup(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
     captured: dict[str, int | None] = {"seed": None, "steps": None}
 
     def _fake_configure(seed: int) -> None:
         captured["seed"] = seed
 
-    def _fake_smoke_loader(train_cfg, max_steps: int) -> None:
+    def _fake_smoke_loader(train_cfg, max_steps: int, indices_csv: str) -> None:
         del train_cfg
+        del indices_csv
         captured["steps"] = max_steps
 
     monkeypatch.setattr(cli_main, "configure_torch_determinism", _fake_configure)
@@ -157,6 +197,7 @@ def test_train_smoke_deterministic_flag_controls_setup(tmp_path: Path, monkeypat
 
 def test_train_smoke_deterministic_false_skips_setup(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
     captured: dict[str, bool] = {"called": False}
 
@@ -184,6 +225,7 @@ def test_train_smoke_deterministic_false_skips_setup(tmp_path: Path, monkeypatch
 
 def test_train_deterministic_setup_runs_without_smoke(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
     captured: dict[str, int | None] = {"seed": None}
 
@@ -207,6 +249,7 @@ def test_train_deterministic_setup_runs_without_smoke(tmp_path: Path, monkeypatc
 
 def test_train_deterministic_false_skips_setup_without_smoke(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    _stub_split_registry(monkeypatch, tmp_path)
     runner = CliRunner()
     captured: dict[str, bool] = {"called": False}
 

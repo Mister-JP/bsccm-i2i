@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import logging
 import os
 import random
@@ -15,6 +14,8 @@ import torch
 from dotenv import load_dotenv
 
 from bsccm_i2i.datasets.bsccm_dataset import BSCCM23to6Dataset
+from bsccm_i2i.splits.io import read_indices_csv
+from bsccm_i2i.splits.strategies import random_fraction_split
 
 LOGGER = logging.getLogger(__name__)
 
@@ -111,90 +112,6 @@ def resolve_dataset_root(
     )
 
 
-def load_indices_csv(path: Path) -> dict[str, list[int]]:
-    """
-    Load sample indices from CSV.
-
-    Supports common index column names and optional `split` labels (`train|val|test`).
-    Returns a dictionary with `all`, `train`, `val`, and `test` index lists.
-    """
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        field_names = [name.strip() for name in (reader.fieldnames or []) if name is not None]
-        if not field_names:
-            raise ValueError(f"indices CSV must include a header row: {path}")
-
-        index_column = next(
-            (name for name in ("global_index", "index", "idx", "id") if name in field_names),
-            field_names[0],
-        )
-        split_column = "split" if "split" in field_names else None
-
-        rows: dict[str, list[int]] = {"all": [], "train": [], "val": [], "test": []}
-        for row_number, row in enumerate(reader, start=2):
-            raw_index = row.get(index_column, "").strip()
-            if not raw_index:
-                raise ValueError(f"missing index value in {path}:{row_number}")
-            try:
-                index_value = int(raw_index)
-            except ValueError as exc:
-                raise ValueError(
-                    f"invalid integer index in {path}:{row_number}: {raw_index}"
-                ) from exc
-            rows["all"].append(index_value)
-
-            if split_column is None:
-                continue
-
-            split_name = row.get(split_column, "").strip().lower()
-            if not split_name:
-                continue
-            if split_name not in {"train", "val", "test"}:
-                raise ValueError(
-                    f"invalid split value in {path}:{row_number}: {split_name!r} "
-                    "(expected train|val|test)"
-                )
-            rows[split_name].append(index_value)
-
-    if not rows["all"]:
-        raise ValueError(f"indices CSV is empty: {path}")
-    return rows
-
-
-def split_indices(
-    indices: list[int],
-    train_frac: float,
-    val_frac: float,
-    seed: int,
-) -> tuple[list[int], list[int], list[int]]:
-    """
-    Split a flat index list into train/val/test subsets with deterministic shuffling.
-
-    Ensures train is non-empty and leaves the remainder for test after train and val cuts.
-    """
-    if not indices:
-        raise ValueError("no dataset indices available to split")
-
-    shuffled = list(indices)
-    random.Random(seed).shuffle(shuffled)
-
-    total = len(shuffled)
-    train_count = int(total * train_frac)
-    val_count = int(total * val_frac)
-    if train_count <= 0:
-        raise ValueError("train split is empty; adjust split fractions or indices CSV")
-    if train_count + val_count >= total:
-        val_count = max(0, total - train_count - 1)
-
-    train_indices = shuffled[:train_count]
-    val_indices = shuffled[train_count : train_count + val_count]
-    test_indices = shuffled[train_count + val_count :]
-
-    if not train_indices:
-        raise ValueError("train split is empty after split computation")
-    return train_indices, val_indices, test_indices
-
-
 class BSCCM23to6DataModule:
     """Simple datamodule that creates train/val/test dataloaders for BSCCM."""
 
@@ -265,7 +182,7 @@ class BSCCM23to6DataModule:
 
         if self.indices_csv:
             self._log(f"Using indices CSV: {self.indices_csv}")
-            csv_indices = load_indices_csv(Path(self.indices_csv))
+            csv_indices = read_indices_csv(Path(self.indices_csv))
             has_explicit_splits = any(csv_indices[key] for key in ("train", "val", "test"))
             if has_explicit_splits:
                 if not csv_indices["train"]:
@@ -276,7 +193,7 @@ class BSCCM23to6DataModule:
                 self._log("Using explicit train/val/test splits from indices CSV")
             else:
                 self._log("No explicit split labels in CSV; applying seeded fraction split")
-                train_indices, val_indices, test_indices = split_indices(
+                train_indices, val_indices, test_indices = random_fraction_split(
                     indices=csv_indices["all"],
                     train_frac=self.train_frac,
                     val_frac=self.val_frac,
@@ -285,7 +202,7 @@ class BSCCM23to6DataModule:
         else:
             self._log("Using backend indices with seeded fraction split")
             all_indices = [int(value) for value in backend.get_indices(shuffle=False)]
-            train_indices, val_indices, test_indices = split_indices(
+            train_indices, val_indices, test_indices = random_fraction_split(
                 indices=all_indices,
                 train_frac=self.train_frac,
                 val_frac=self.val_frac,

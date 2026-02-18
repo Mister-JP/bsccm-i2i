@@ -24,7 +24,7 @@ def test_subcommand_help_exits_zero() -> None:
         assert result.exit_code == 0
 
 
-def test_subcommands_print_deterministic_called_message(
+def test_eval_and_report_print_deterministic_called_message(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -32,8 +32,6 @@ def test_subcommands_print_deterministic_called_message(
     runner = CliRunner()
 
     expected = {
-        "split": "CALLED split",
-        "train": "CALLED train",
         "eval": "CALLED eval",
         "report": "CALLED report",
     }

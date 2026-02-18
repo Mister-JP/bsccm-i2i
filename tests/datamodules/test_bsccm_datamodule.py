@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from bsccm_i2i.datamodules import bsccm_datamodule as datamodule_mod
+from bsccm_i2i.splits.io import read_indices_csv
+from bsccm_i2i.splits.strategies import random_fraction_split
 
 
 def test_load_indices_csv_reads_all_and_split_columns(tmp_path: Path) -> None:
@@ -17,7 +19,7 @@ def test_load_indices_csv_reads_all_and_split_columns(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    rows = datamodule_mod.load_indices_csv(csv_path)
+    rows = read_indices_csv(csv_path)
     assert rows["all"] == [11, 12, 13, 14]
     assert rows["train"] == [11, 14]
     assert rows["val"] == [12]
@@ -25,7 +27,7 @@ def test_load_indices_csv_reads_all_and_split_columns(tmp_path: Path) -> None:
 
 
 def test_split_indices_keeps_non_empty_train() -> None:
-    train, val, test = datamodule_mod.split_indices(
+    train, val, test = random_fraction_split(
         indices=[1, 2, 3, 4, 5],
         train_frac=0.8,
         val_frac=0.1,
