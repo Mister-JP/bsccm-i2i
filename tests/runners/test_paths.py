@@ -11,8 +11,11 @@ def test_create_run_dir_and_write_env_snapshot(tmp_path: Path, monkeypatch) -> N
     monkeypatch.chdir(tmp_path)
     run_dir = create_run_dir("dry_run_test")
 
-    assert run_dir == Path("runs") / dt.date.today().isoformat() / "dry_run_test"
-    assert run_dir.resolve() == (tmp_path / "runs" / dt.date.today().isoformat() / "dry_run_test")
+    assert run_dir.parent == Path("runs") / dt.date.today().isoformat() / "dry_run_test"
+    assert run_dir.resolve().parent == (
+        tmp_path / "runs" / dt.date.today().isoformat() / "dry_run_test"
+    )
+    dt.datetime.strptime(run_dir.name[:19], "%Y-%m-%d_%H-%M-%S")
 
     for subdirectory in ("env", "checkpoints", "tensorboard", "metrics", "samples"):
         assert (run_dir / subdirectory).is_dir()
@@ -30,3 +33,11 @@ def test_create_run_dir_and_write_env_snapshot(tmp_path: Path, monkeypatch) -> N
     assert "cpu" in system_info
     assert "ram" in system_info
     assert "gpu" in system_info
+
+
+def test_create_run_dir_generates_unique_leaf_on_collision(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    first = create_run_dir("dry_run_test")
+    second = create_run_dir("dry_run_test")
+    assert first != second
+    assert first.parent == second.parent

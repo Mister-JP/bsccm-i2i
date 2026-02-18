@@ -11,6 +11,7 @@ class DataConfig(BaseModel):
     num_workers: int
     batch_size: int
     pin_memory: bool
+    indices_csv: str | None = None
 
 
 class SplitConfig(BaseModel):
@@ -42,12 +43,16 @@ class TrainerConfig(BaseModel):
     precision: str
     overfit_n: int
     seed: int
+    deterministic: bool = True
+    max_steps: int = 0
+    smoke: bool = False
 
 
 class LoggingConfig(BaseModel):
     tensorboard: bool = True
     log_every_n_steps: int
     image_log_every_n_steps: int
+    data_progress: bool = False
 
 
 class RunConfig(BaseModel):

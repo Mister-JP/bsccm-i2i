@@ -15,12 +15,20 @@ _RUN_SUBDIRECTORIES = ("env", "checkpoints", "tensorboard", "metrics", "samples"
 
 
 def create_run_dir(run_name: str) -> Path:
-    """Create a dated run directory and standard artifact subdirectories."""
+    """Create a dated run directory with a timestamp leaf and standard subdirectories."""
     normalized = run_name.strip()
     if not normalized:
         raise ValueError("run_name must be non-empty.")
 
-    run_dir = Path("runs") / dt.date.today().isoformat() / normalized
+    date_part = dt.date.today().isoformat()
+    timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_root = Path("runs") / date_part / normalized
+    run_dir = run_root / timestamp
+    suffix = 1
+    while run_dir.exists():
+        run_dir = run_root / f"{timestamp}-{suffix}"
+        suffix += 1
+
     for subdirectory in _RUN_SUBDIRECTORIES:
         (run_dir / subdirectory).mkdir(parents=True, exist_ok=True)
     return run_dir

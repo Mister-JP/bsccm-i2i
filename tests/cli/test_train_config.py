@@ -25,7 +25,12 @@ def test_train_creates_resolved_config_artifact(tmp_path: Path, monkeypatch) -> 
     )
 
     assert result.exit_code == 0
-    run_dir = tmp_path / "runs" / dt.date.today().isoformat() / "baseline_unet"
+    run_dir_line = next(
+        line for line in result.stdout.splitlines() if line.startswith("RUN_DIR ")
+    )
+    run_dir = tmp_path / run_dir_line.replace("RUN_DIR ", "", 1)
+    assert run_dir.parent == (tmp_path / "runs" / dt.date.today().isoformat() / "baseline_unet")
+    dt.datetime.strptime(run_dir.name[:19], "%Y-%m-%d_%H-%M-%S")
     resolved_config = run_dir / "config_resolved.yaml"
     assert resolved_config.is_file()
 
