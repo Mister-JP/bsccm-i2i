@@ -77,7 +77,10 @@ Constraint:
 - TensorBoard enablement
 - Scalar logging cadence (`log_every_n_steps`)
 - Image logging cadence (`image_log_every_n_steps`)
-- Number of samples in image visualizations (`num_viz_samples`)
+- Optional explicit antibody subset for image panels (`viz_antibodies`)
+- Number of samples per antibody in image visualizations (`viz_samples_per_antibody`)
+- Whether targets are logged once per antibody tag (`viz_log_target_once`)
+- Whether absolute error grids are logged (`viz_log_error`)
 - Extra split/datamodule progress logs (`data_progress`)
 
 `run`:

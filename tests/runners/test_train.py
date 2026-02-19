@@ -17,7 +17,7 @@ def _make_train_cfg(*, split_name: str = "split_abc") -> TrainConfig:
             overrides={
                 "model": {"base_channels": 16},
                 "trainer": {"max_steps": 2},
-                "logging": {"num_viz_samples": 2},
+                "logging": {"viz_samples_per_antibody": 2},
             },
         )
     )
@@ -103,7 +103,7 @@ def test_run_train_writes_standardized_artifacts(tmp_path: Path, monkeypatch) ->
     viz_callbacks = [cb for cb in callbacks if isinstance(cb, train_runner.I2IVizCallback)]
     assert len(viz_callbacks) == 1
     viz_callback = viz_callbacks[0]
-    assert viz_callback.num_viz_samples == 2
+    assert viz_callback.viz_samples_per_antibody == 2
     assert viz_callback.image_log_every_n_steps == 100
 
 

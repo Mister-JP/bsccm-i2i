@@ -91,8 +91,11 @@ def run_train(train_cfg: TrainConfig) -> Path:
 
     callbacks: list[pl.Callback] = [
         I2IVizCallback(
-            num_viz_samples=train_cfg.logging.num_viz_samples,
+            viz_antibodies=train_cfg.logging.viz_antibodies,
+            viz_samples_per_antibody=train_cfg.logging.viz_samples_per_antibody,
             image_log_every_n_steps=train_cfg.logging.image_log_every_n_steps,
+            viz_log_target_once=train_cfg.logging.viz_log_target_once,
+            viz_log_error=train_cfg.logging.viz_log_error,
         )
     ]
     checkpoint_callback: ModelCheckpoint | None = None

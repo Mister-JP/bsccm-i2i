@@ -1,4 +1,8 @@
 tensorboard: true
 log_every_n_steps: 10
 image_log_every_n_steps: 100
+viz_antibodies: []
+viz_samples_per_antibody: 2
+viz_log_target_once: true
+viz_log_error: true
 data_progress: true

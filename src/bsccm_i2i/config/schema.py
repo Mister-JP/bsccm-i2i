@@ -60,7 +60,10 @@ class LoggingConfig(BaseModel):
     tensorboard: bool = True
     log_every_n_steps: int = 50
     image_log_every_n_steps: int = 200
-    num_viz_samples: int = 4
+    viz_antibodies: list[str] = Field(default_factory=list)
+    viz_samples_per_antibody: int = 2
+    viz_log_target_once: bool = True
+    viz_log_error: bool = True
     data_progress: bool = False
 
 

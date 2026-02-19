@@ -18,18 +18,9 @@ from bsccm_i2i.splits.strategies import (
     random_fraction_split,
     stratified_antibodies_fraction_split,
 )
+from bsccm_i2i.utils.antibodies import normalize_antibody_label
 
 LOGGER = logging.getLogger(__name__)
-_MISSING_ANTIBODY_LABEL = "__missing_antibody__"
-
-
-def _normalize_antibody_label(value: Any) -> str:
-    if value is None:
-        return _MISSING_ANTIBODY_LABEL
-    text = str(value).strip()
-    if not text or text.lower() in {"nan", "none"}:
-        return _MISSING_ANTIBODY_LABEL
-    return text
 
 
 def _extract_antibody_labels(bsccm_client: Any, indices: list[int]) -> list[str]:
@@ -56,7 +47,7 @@ def _extract_antibody_labels(bsccm_client: Any, indices: list[int]) -> list[str]
             ) from exc
         if hasattr(raw_value, "iloc"):
             raw_value = raw_value.iloc[0]
-        labels.append(_normalize_antibody_label(raw_value))
+        labels.append(normalize_antibody_label(raw_value))
     return labels
 
 

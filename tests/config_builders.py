@@ -60,7 +60,10 @@ _BASE_LOGGING_CONFIG: dict[str, Any] = {
     "tensorboard": True,
     "log_every_n_steps": 10,
     "image_log_every_n_steps": 100,
-    "num_viz_samples": 4,
+    "viz_antibodies": [],
+    "viz_samples_per_antibody": 2,
+    "viz_log_target_once": True,
+    "viz_log_error": True,
     "data_progress": False,
 }
 

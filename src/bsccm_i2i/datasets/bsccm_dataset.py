@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from bsccm_i2i.quiet import run_quietly
+from bsccm_i2i.utils.quiet import run_quietly
 
 EXPECTED_INPUT_CHANNELS = 23
 EXPECTED_TARGET_CHANNELS = 6

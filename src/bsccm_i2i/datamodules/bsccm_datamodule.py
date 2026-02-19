@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+from collections import defaultdict
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -16,9 +17,10 @@ from dotenv import load_dotenv
 from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 from bsccm_i2i.datasets.bsccm_dataset import BSCCM23to6Dataset
-from bsccm_i2i.quiet import run_quietly
 from bsccm_i2i.splits.io import read_indices_csv
 from bsccm_i2i.splits.strategies import random_fraction_split
+from bsccm_i2i.utils.antibodies import normalize_antibody_label
+from bsccm_i2i.utils.quiet import run_quietly
 _STAGE_TO_SPLITS: dict[str | None, tuple[str, ...]] = {
     None: ("train", "val", "test"),
     "fit": ("train", "val"),
@@ -281,6 +283,146 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             self._datasets[split_name] = dataset
         self._log("Requested datasets initialized")
 
+    def _resolve_val_dataset_for_viz(self) -> Any | None:
+        self.setup("validate")
+        dataset = self._datasets.get("val")
+        if dataset is None:
+            return None
+        indices = getattr(dataset, "indices", None)
+        if not isinstance(indices, list) or not indices:
+            return None
+        return dataset
+
+    @staticmethod
+    def _resolve_index_dataframe_for_viz(dataset: Any) -> Any | None:
+        get_client = getattr(dataset, "_get_bsccm_client", None)
+        if callable(get_client):
+            bsccm_client = get_client()
+        else:
+            bsccm_client = getattr(dataset, "bsccm_client", None)
+
+        index_dataframe = getattr(bsccm_client, "index_dataframe", None)
+        columns = getattr(index_dataframe, "columns", None)
+        if index_dataframe is None or columns is None or "antibodies" not in columns:
+            return None
+        return index_dataframe
+
+    @staticmethod
+    def _group_positions_by_antibody(
+        *,
+        indices: list[int],
+        index_dataframe: Any,
+    ) -> dict[str, list[int]]:
+        grouped_positions: dict[str, list[int]] = defaultdict(list)
+        for position, global_index in enumerate(indices):
+            raw_label = index_dataframe.loc[int(global_index), "antibodies"]
+            if hasattr(raw_label, "iloc"):
+                raw_label = raw_label.iloc[0]
+            label = normalize_antibody_label(raw_label)
+            grouped_positions[label].append(position)
+        return grouped_positions
+
+    @staticmethod
+    def _select_antibody_labels(
+        *,
+        grouped_positions: dict[str, list[int]],
+        antibodies: list[str] | None,
+    ) -> list[str]:
+        if not antibodies:
+            return sorted(grouped_positions)
+
+        selected_labels: list[str] = []
+        lower_to_label = {label.lower(): label for label in grouped_positions}
+        for raw_value in antibodies:
+            normalized = normalize_antibody_label(raw_value)
+            if normalized in grouped_positions:
+                selected_labels.append(normalized)
+                continue
+            resolved = lower_to_label.get(normalized.lower())
+            if resolved is not None:
+                selected_labels.append(resolved)
+        return selected_labels
+
+    @staticmethod
+    def _collect_xy_samples_for_positions(
+        *,
+        dataset: Any,
+        positions: list[int],
+        sample_cap: int,
+    ) -> tuple[torch.Tensor, torch.Tensor] | None:
+        x_samples: list[torch.Tensor] = []
+        y_samples: list[torch.Tensor] = []
+        for position in positions[:sample_cap]:
+            sample = dataset[position]
+            if not isinstance(sample, tuple) or len(sample) != 2:
+                continue
+            x_value, y_value = sample
+            if not isinstance(x_value, torch.Tensor) or not isinstance(y_value, torch.Tensor):
+                continue
+            if x_value.ndim != 3 or y_value.ndim != 3:
+                continue
+            x_samples.append(x_value.detach().float().clamp(0.0, 1.0).cpu())
+            y_samples.append(y_value.detach().float().clamp(0.0, 1.0).cpu())
+
+        if not x_samples or not y_samples:
+            return None
+        return torch.stack(x_samples, dim=0), torch.stack(y_samples, dim=0)
+
+    def build_antibody_viz_panel(
+        self,
+        *,
+        antibodies: list[str] | None,
+        samples_per_antibody: int,
+    ) -> list[dict[str, Any]]:
+        """
+        Build a deterministic validation panel grouped by antibody labels.
+
+        Returns entries shaped as:
+        - `{"antibody": str, "x": Tensor[B, C_in, H, W], "y": Tensor[B, C_out, H, W]}`
+        """
+        dataset = self._resolve_val_dataset_for_viz()
+        if dataset is None:
+            return []
+        indices = getattr(dataset, "indices")
+
+        index_dataframe = self._resolve_index_dataframe_for_viz(dataset)
+        if index_dataframe is None:
+            return []
+        grouped_positions = self._group_positions_by_antibody(
+            indices=indices,
+            index_dataframe=index_dataframe,
+        )
+        selected_labels = self._select_antibody_labels(
+            grouped_positions=grouped_positions,
+            antibodies=antibodies,
+        )
+
+        panel: list[dict[str, Any]] = []
+        sample_cap = max(1, int(samples_per_antibody))
+        for label in selected_labels:
+            positions = grouped_positions.get(label, [])
+            if not positions:
+                continue
+
+            sample_tensors = self._collect_xy_samples_for_positions(
+                dataset=dataset,
+                positions=positions,
+                sample_cap=sample_cap,
+            )
+            if sample_tensors is None:
+                continue
+            x_batch, y_batch = sample_tensors
+
+            panel.append(
+                {
+                    "antibody": label,
+                    "x": x_batch,
+                    "y": y_batch,
+                }
+            )
+
+        return panel
+
     def _make_dataloader(self, dataset: BSCCM23to6Dataset, *, shuffle: bool) -> Any:
         """
         Create a torch `DataLoader` from a prepared dataset using configured options.
@@ -308,7 +450,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             dataset,
             batch_size=self.batch_size,
             shuffle=shuffle,
-            drop_last=True,
+            drop_last=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=prefetch_factor,

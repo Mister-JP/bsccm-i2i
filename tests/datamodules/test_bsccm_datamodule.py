@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from bsccm_i2i.datamodules import bsccm_datamodule as datamodule_mod
 from bsccm_i2i.splits.io import read_indices_csv
@@ -164,14 +165,14 @@ def test_make_dataloader_uses_seeded_generator_for_shuffle(monkeypatch) -> None:
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs["shuffle"] is True
-    assert kwargs["drop_last"] is True
+    assert kwargs["drop_last"] is False
     assert kwargs["generator"].seed == 321
     assert callable(kwargs["worker_init_fn"])
 
     datamodule._make_dataloader(dataset, shuffle=False)
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
-    assert kwargs["drop_last"] is True
+    assert kwargs["drop_last"] is False
     assert kwargs["generator"] is None
 
 
@@ -294,3 +295,96 @@ def test_setup_validate_fails_when_val_split_is_empty(tmp_path: Path, monkeypatc
 
     with pytest.raises(ValueError, match="val split is empty"):
         datamodule.setup("validate")
+
+
+def test_build_antibody_viz_panel_groups_and_filters() -> None:
+    class _FakeIndexDataFrame:
+        columns = ("antibodies",)
+
+        def __init__(self, labels_by_index: dict[int, str]) -> None:
+            self._labels_by_index = labels_by_index
+            self.loc = self
+
+        def __getitem__(self, key: tuple[int, str]) -> str:
+            index_value, column_name = key
+            if column_name != "antibodies":
+                raise KeyError(column_name)
+            return self._labels_by_index[int(index_value)]
+
+    class _FakeDataset:
+        def __init__(self) -> None:
+            self.indices = [10, 11, 12, 13]
+            self.bsccm_client = SimpleNamespace(
+                index_dataframe=_FakeIndexDataFrame(
+                    {
+                        10: "CD45",
+                        11: "CD45",
+                        12: "CD123",
+                        13: "CD123",
+                    }
+                )
+            )
+
+        def _get_bsccm_client(self) -> object:
+            return self.bsccm_client
+
+        def __getitem__(self, item: int) -> tuple[torch.Tensor, torch.Tensor]:
+            global_index = self.indices[item]
+            fill = float(global_index % 7) / 7.0
+            x = torch.full((23, 8, 8), fill_value=fill, dtype=torch.float32)
+            y = torch.full((6, 8, 8), fill_value=fill, dtype=torch.float32)
+            return x, y
+
+    datamodule = datamodule_mod.BSCCM23to6DataModule(
+        root_dir="data/bsccm_tiny",
+        dataset_variant="tiny",
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        seed=42,
+        train_frac=0.8,
+        val_frac=0.1,
+        test_frac=0.1,
+    )
+    datamodule._split_indices = {"train": [0], "val": [10, 11, 12, 13], "test": [1]}
+    datamodule._datasets["val"] = _FakeDataset()
+
+    panel = datamodule.build_antibody_viz_panel(
+        antibodies=["cd45"],
+        samples_per_antibody=1,
+    )
+    assert len(panel) == 1
+    assert panel[0]["antibody"] == "CD45"
+    assert isinstance(panel[0]["x"], torch.Tensor)
+    assert isinstance(panel[0]["y"], torch.Tensor)
+    assert tuple(panel[0]["x"].shape) == (1, 23, 8, 8)
+    assert tuple(panel[0]["y"].shape) == (1, 6, 8, 8)
+
+
+def test_build_antibody_viz_panel_returns_empty_without_antibody_column() -> None:
+    class _NoAntibodyIndexDataFrame:
+        columns = ("other",)
+
+    class _FakeDataset:
+        indices = [1]
+        bsccm_client = SimpleNamespace(index_dataframe=_NoAntibodyIndexDataFrame())
+
+    datamodule = datamodule_mod.BSCCM23to6DataModule(
+        root_dir="data/bsccm_tiny",
+        dataset_variant="tiny",
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        seed=42,
+        train_frac=0.8,
+        val_frac=0.1,
+        test_frac=0.1,
+    )
+    datamodule._split_indices = {"train": [0], "val": [1], "test": [2]}
+    datamodule._datasets["val"] = _FakeDataset()
+
+    panel = datamodule.build_antibody_viz_panel(
+        antibodies=[],
+        samples_per_antibody=1,
+    )
+    assert panel == []

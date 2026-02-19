@@ -148,7 +148,6 @@ class UNetCNNModule(BaseI2IModule):
         batch: tuple[torch.Tensor, torch.Tensor],
         *,
         stage: str,
-        cache_for_viz: bool,
     ) -> torch.Tensor:
         x, y = batch
         y_hat, loss = self._forward_and_loss(batch)
@@ -163,24 +162,19 @@ class UNetCNNModule(BaseI2IModule):
             prefix=f"metrics/{stage}",
             batch_size=int(x.shape[0]),
         )
-        if cache_for_viz:
-            self._viz_cache = {
-                "x": x.detach(),
-                "y": y.detach(),
-                "y_hat": y_hat.detach(),
-            }
         return loss
 
     def validation_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        return self._shared_eval_step(batch, stage="val", cache_for_viz=(batch_idx == 0))
+        del batch_idx
+        return self._shared_eval_step(batch, stage="val")
 
     def test_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         del batch_idx
-        return self._shared_eval_step(batch, stage="test", cache_for_viz=False)
+        return self._shared_eval_step(batch, stage="test")
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)

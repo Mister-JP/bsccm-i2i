@@ -14,3 +14,4 @@ def run_quietly(fn: Callable[[], T]) -> T:
     """Run a callable while suppressing stdout/stderr."""
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         return fn()
+
