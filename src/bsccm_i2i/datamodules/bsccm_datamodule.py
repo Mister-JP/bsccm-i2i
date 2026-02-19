@@ -308,6 +308,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             dataset,
             batch_size=self.batch_size,
             shuffle=shuffle,
+            drop_last=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             prefetch_factor=prefetch_factor,

@@ -9,9 +9,28 @@ import torch
 class I2IVizCallback(pl.Callback):
     """Log target/pred/error channel grids from `pl_module._viz_cache` at validation epoch end."""
 
-    def __init__(self, num_viz_samples: int = 4) -> None:
+    def __init__(
+        self,
+        num_viz_samples: int = 4,
+        image_log_every_n_steps: int = 200,
+    ) -> None:
         super().__init__()
         self.num_viz_samples = max(1, int(num_viz_samples))
+        self.image_log_every_n_steps = max(1, int(image_log_every_n_steps))
+        self._next_log_step = 0
+
+    def state_dict(self) -> dict[str, int]:
+        return {"next_log_step": int(self._next_log_step)}
+
+    def load_state_dict(self, state_dict: dict[str, int]) -> None:
+        next_step = int(state_dict.get("next_log_step", 0))
+        self._next_log_step = max(0, next_step)
+
+    def _should_log_for_step(self, global_step: int) -> bool:
+        if global_step < self._next_log_step:
+            return False
+        self._next_log_step = global_step + self.image_log_every_n_steps
+        return True
 
     @staticmethod
     def _build_grid(images: torch.Tensor, num_samples: int) -> torch.Tensor:
@@ -48,9 +67,15 @@ class I2IVizCallback(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if not bool(getattr(trainer, "is_global_zero", True)):
             return
+        if bool(getattr(trainer, "sanity_checking", False)):
+            return
 
         experiment = self._resolve_tb_experiment(trainer)
         if experiment is None:
+            return
+
+        global_step = int(getattr(trainer, "global_step", 0))
+        if not self._should_log_for_step(global_step):
             return
 
         cache = getattr(pl_module, "_viz_cache", None)
@@ -72,7 +97,6 @@ class I2IVizCallback(pl.Callback):
         pred_grid = self._build_grid(prediction, self.num_viz_samples)
         error_grid = self._build_grid((target - prediction).abs(), self.num_viz_samples)
 
-        global_step = int(getattr(trainer, "global_step", 0))
         experiment.add_image("viz/target_fluor_grid", target_grid, global_step=global_step)
         experiment.add_image("viz/pred_fluor_grid", pred_grid, global_step=global_step)
         experiment.add_image("viz/error_abs_grid", error_grid, global_step=global_step)

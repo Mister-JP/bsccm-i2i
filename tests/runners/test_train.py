@@ -96,6 +96,15 @@ def test_run_train_writes_standardized_artifacts(tmp_path: Path, monkeypatch) ->
     assert report["split_id"] == "split_abc"
     assert report["best_metric"]["name"] == "loss/val"
     assert report["git_commit"] == "abc123"
+    trainer_kwargs = captured["trainer_kwargs"]
+    assert isinstance(trainer_kwargs, dict)
+    callbacks = trainer_kwargs["callbacks"]
+    assert isinstance(callbacks, list)
+    viz_callbacks = [cb for cb in callbacks if isinstance(cb, train_runner.I2IVizCallback)]
+    assert len(viz_callbacks) == 1
+    viz_callback = viz_callbacks[0]
+    assert viz_callback.num_viz_samples == 2
+    assert viz_callback.image_log_every_n_steps == 100
 
 
 def test_run_train_respects_logger_and_checkpoint_toggles(tmp_path: Path, monkeypatch) -> None:

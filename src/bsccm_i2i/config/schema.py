@@ -46,7 +46,7 @@ class TrainerConfig(BaseModel):
     device: str
     precision: str
     overfit_n: int
-    prefetch_factor: int = 4096
+    prefetch_factor: int = 8
     seed: int
     deterministic: bool = True
     max_steps: int = 0

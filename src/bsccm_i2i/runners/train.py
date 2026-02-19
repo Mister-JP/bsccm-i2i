@@ -90,7 +90,10 @@ def run_train(train_cfg: TrainConfig) -> Path:
     model = build_model(train_cfg.model)
 
     callbacks: list[pl.Callback] = [
-        I2IVizCallback(num_viz_samples=train_cfg.logging.num_viz_samples)
+        I2IVizCallback(
+            num_viz_samples=train_cfg.logging.num_viz_samples,
+            image_log_every_n_steps=train_cfg.logging.image_log_every_n_steps,
+        )
     ]
     checkpoint_callback: ModelCheckpoint | None = None
     if train_cfg.trainer.enable_checkpointing:

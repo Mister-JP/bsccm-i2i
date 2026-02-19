@@ -164,12 +164,14 @@ def test_make_dataloader_uses_seeded_generator_for_shuffle(monkeypatch) -> None:
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs["shuffle"] is True
+    assert kwargs["drop_last"] is True
     assert kwargs["generator"].seed == 321
     assert callable(kwargs["worker_init_fn"])
 
     datamodule._make_dataloader(dataset, shuffle=False)
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
+    assert kwargs["drop_last"] is True
     assert kwargs["generator"] is None
 
 

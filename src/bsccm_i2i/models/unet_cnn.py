@@ -174,8 +174,7 @@ class UNetCNNModule(BaseI2IModule):
     def validation_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        del batch_idx
-        return self._shared_eval_step(batch, stage="val", cache_for_viz=True)
+        return self._shared_eval_step(batch, stage="val", cache_for_viz=(batch_idx == 0))
 
     def test_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
