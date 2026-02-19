@@ -71,7 +71,7 @@ Constraint:
 `trainer`:
 - Runtime controls (`max_epochs`, `max_steps`, `device`, `precision`)
 - Reproducibility (`seed`, `deterministic`)
-- Trainer limits and toggles (`limit_val_batches`, `enable_checkpointing`, `logger`)
+- Trainer limits and toggles (`limit_train_batches`, `limit_val_batches`, `enable_checkpointing`, `logger`)
 
 `logging`:
 - TensorBoard enablement

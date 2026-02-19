@@ -51,6 +51,7 @@ _BASE_TRAINER_CONFIG: dict[str, Any] = {
     "prefetch_factor": 4096,
     "seed": 123,
     "deterministic": True,
+    "limit_train_batches": 1.0,
     "limit_val_batches": 1.0,
     "enable_checkpointing": True,
     "logger": True,

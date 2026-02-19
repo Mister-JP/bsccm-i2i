@@ -50,6 +50,8 @@ class TrainerConfig(BaseModel):
     seed: int
     deterministic: bool = True
     max_steps: int = 0
+    # Throttle training [0.00, 1.00] work per run; lower for faster hyperparameter sweeps.
+    limit_train_batches: float | int = 1.0
     # Throttle validation[0.00, 1.00] work per run; lower for faster debug/smoke iterations.
     limit_val_batches: float | int = 1.0
     enable_checkpointing: bool = True

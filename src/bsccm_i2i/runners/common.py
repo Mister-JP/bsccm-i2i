@@ -124,6 +124,7 @@ def make_train_trainer(
         max_steps=train_cfg.trainer.max_steps if train_cfg.trainer.max_steps > 0 else -1,
         overfit_batches=train_cfg.trainer.overfit_n if train_cfg.trainer.overfit_n > 0 else 0.0,
         deterministic=train_cfg.trainer.deterministic,
+        limit_train_batches=train_cfg.trainer.limit_train_batches,
         limit_val_batches=train_cfg.trainer.limit_val_batches,
         log_every_n_steps=train_cfg.logging.log_every_n_steps,
         enable_checkpointing=train_cfg.trainer.enable_checkpointing,
