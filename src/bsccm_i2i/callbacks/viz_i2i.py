@@ -9,6 +9,7 @@ from typing import Any
 import pytorch_lightning as pl
 import torch
 
+
 @dataclass
 class _PanelGroup:
     tag_component: str
@@ -94,7 +95,7 @@ class I2IVizCallback(pl.Callback):
     def _sanitize_tag_component(value: str) -> str:
         normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())
         normalized = normalized.strip("_")
-        return normalized or "unknown"
+        return (normalized or "unknown").lower()
 
     def _build_panel_groups(self, trainer: pl.Trainer) -> list[_PanelGroup]:
         datamodule = getattr(trainer, "datamodule", None)
@@ -171,11 +172,13 @@ class I2IVizCallback(pl.Callback):
             return
 
         pred_grid = self._build_grid(prediction, int(group.x.shape[0]))
-        target_tag = f"images/{group.tag_component}/target"
-        pred_tag = f"images/{group.tag_component}/pred"
-        error_tag = f"images/{group.tag_component}/error_abs"
+        target_tag = f"{group.tag_component}/target"
+        pred_tag = f"{group.tag_component}/pred"
+        error_tag = f"{group.tag_component}/error_abs"
 
-        should_log_target = (not self.viz_log_target_once) or (target_tag not in self._target_logged_tags)
+        should_log_target = (not self.viz_log_target_once) or (
+            target_tag not in self._target_logged_tags
+        )
         if should_log_target:
             target_grid = self._build_grid(target, int(group.x.shape[0]))
             experiment.add_image(target_tag, target_grid, global_step=global_step)

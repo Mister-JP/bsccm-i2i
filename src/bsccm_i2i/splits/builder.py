@@ -16,7 +16,9 @@ from bsccm_i2i.runners.paths import write_json
 from bsccm_i2i.splits.io import write_indices_csv
 from bsccm_i2i.splits.strategies import (
     random_fraction_split,
+    random_fraction_subset,
     stratified_antibodies_fraction_split,
+    stratified_antibodies_fraction_subset,
 )
 from bsccm_i2i.utils.antibodies import normalize_antibody_label
 
@@ -95,22 +97,34 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
 
     strategy = split_task_config.split.strategy.strip().lower()
     if strategy == "random":
-        train_indices, val_indices, test_indices = random_fraction_split(
+        subset_indices = random_fraction_subset(
             indices=all_indices,
+            subset_frac=split_task_config.split.subset_frac,
+            seed=split_task_config.split.seed,
+        )
+        train_indices, val_indices, test_indices = random_fraction_split(
+            indices=subset_indices,
             train_frac=split_task_config.split.train_frac,
             val_frac=split_task_config.split.val_frac,
             seed=split_task_config.split.seed,
         )
     elif strategy == "stratified_antibodies":
         antibody_labels = _extract_antibody_labels(bsccm_client, all_indices)
-        unique_antibodies = len(set(antibody_labels))
+        subset_indices, subset_antibody_labels = stratified_antibodies_fraction_subset(
+            indices=all_indices,
+            antibodies=antibody_labels,
+            subset_frac=split_task_config.split.subset_frac,
+            seed=split_task_config.split.seed,
+        )
+        unique_antibodies = len(set(subset_antibody_labels))
         LOGGER.info(
-            "Applying antibody-stratified split across %d antibody groups",
+            "Applying antibody-stratified split after subset_frac=%.4f across %d antibody groups",
+            split_task_config.split.subset_frac,
             unique_antibodies,
         )
         train_indices, val_indices, test_indices = stratified_antibodies_fraction_split(
-            indices=all_indices,
-            antibodies=antibody_labels,
+            indices=subset_indices,
+            antibodies=subset_antibody_labels,
             train_frac=split_task_config.split.train_frac,
             val_frac=split_task_config.split.val_frac,
             seed=split_task_config.split.seed,
@@ -131,6 +145,7 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
         "split_id": split_id,
         "strategy": strategy,
         "seed": split_task_config.split.seed,
+        "subset_frac": split_task_config.split.subset_frac,
         "train_frac": split_task_config.split.train_frac,
         "val_frac": split_task_config.split.val_frac,
         "test_frac": split_task_config.split.test_frac,

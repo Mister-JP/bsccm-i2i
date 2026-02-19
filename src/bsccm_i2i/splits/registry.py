@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -90,10 +91,21 @@ def validate_split_matches_config(split_metadata: dict[str, Any], train_cfg: Tra
     if int(split_payload.get("seed", -1)) != int(train_cfg.split.seed):
         mismatches.append(f"seed split={split_payload.get('seed')} config={train_cfg.split.seed}")
 
-    tolerance = 1e-6
-    fraction_keys = ("train_frac", "val_frac", "test_frac")
+    tolerance = 1e-4
+    fraction_keys = ("subset_frac", "train_frac", "val_frac", "test_frac")
     for key in fraction_keys:
-        split_value = float(split_payload.get(key, float("nan")))
+        raw_split_value = split_payload.get(key)
+        if raw_split_value is None:
+            mismatches.append(f"{key} missing in split metadata")
+            continue
+        try:
+            split_value = float(raw_split_value)
+        except (TypeError, ValueError):
+            mismatches.append(f"{key} split={raw_split_value!r} is not a finite float")
+            continue
+        if not math.isfinite(split_value):
+            mismatches.append(f"{key} split={split_value} is not a finite float")
+            continue
         config_value = float(getattr(train_cfg.split, key))
         if abs(split_value - config_value) > tolerance:
             mismatches.append(f"{key} split={split_value} config={config_value}")

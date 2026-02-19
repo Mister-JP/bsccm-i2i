@@ -1,5 +1,6 @@
 strategy: stratified_antibodies
 seed: 42
+subset_frac: 0.01
 train_frac: 0.8
 val_frac: 0.1
 test_frac: 0.1

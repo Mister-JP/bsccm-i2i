@@ -56,10 +56,12 @@ So the final resolved config has these top-level sections:
 
 `split`:
 - Split strategy and seed
+- Optional pre-split dataset downsampling fraction (`subset_frac`)
 - Train/val/test fractions
 - Artifact id reference (`name`) used later by `train`; default is a placeholder to force explicit selection
 
 Constraint:
+- `subset_frac` must be in `(0.0, 1.0]`
 - `train_frac + val_frac + test_frac` must equal `1.0`
 
 `model`:

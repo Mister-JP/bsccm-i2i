@@ -19,6 +19,7 @@ class DataConfig(BaseModel):
 class SplitConfig(BaseModel):
     strategy: str
     seed: int
+    subset_frac: float
     train_frac: float
     val_frac: float
     test_frac: float
@@ -26,6 +27,8 @@ class SplitConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_fractions_sum(self) -> SplitConfig:
+        if self.subset_frac <= 0.0 or self.subset_frac > 1.0:
+            raise ValueError("subset_frac must be in (0.0, 1.0]")
         total = self.train_frac + self.val_frac + self.test_frac
         if abs(total - 1.0) > 1e-6:
             raise ValueError("split fractions must sum to 1.0")

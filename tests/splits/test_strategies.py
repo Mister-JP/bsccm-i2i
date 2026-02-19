@@ -2,7 +2,45 @@ from __future__ import annotations
 
 import pytest
 
-from bsccm_i2i.splits.strategies import stratified_antibodies_fraction_split
+from bsccm_i2i.splits.strategies import (
+    random_fraction_subset,
+    stratified_antibodies_fraction_split,
+    stratified_antibodies_fraction_subset,
+)
+
+
+def test_random_fraction_subset_is_deterministic() -> None:
+    indices = list(range(100))
+    subset_1 = random_fraction_subset(indices=indices, subset_frac=0.25, seed=42)
+    subset_2 = random_fraction_subset(indices=indices, subset_frac=0.25, seed=42)
+
+    assert subset_1 == subset_2
+    assert len(subset_1) == 25
+    assert len(set(subset_1)) == 25
+
+
+def test_stratified_antibodies_fraction_subset_is_deterministic_and_balanced() -> None:
+    indices = list(range(100))
+    antibodies = ["A"] * 80 + ["B"] * 20
+
+    subset_idx_1, subset_labels_1 = stratified_antibodies_fraction_subset(
+        indices=indices,
+        antibodies=antibodies,
+        subset_frac=0.5,
+        seed=42,
+    )
+    subset_idx_2, subset_labels_2 = stratified_antibodies_fraction_subset(
+        indices=indices,
+        antibodies=antibodies,
+        subset_frac=0.5,
+        seed=42,
+    )
+
+    assert subset_idx_1 == subset_idx_2
+    assert subset_labels_1 == subset_labels_2
+    assert len(subset_idx_1) == 50
+    assert subset_labels_1.count("A") == 40
+    assert subset_labels_1.count("B") == 10
 
 
 def test_stratified_antibodies_fraction_split_is_deterministic_and_balanced() -> None:

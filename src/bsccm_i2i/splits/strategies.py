@@ -15,6 +15,18 @@ def _stable_label_seed(seed: int, label: str) -> int:
     return int(seed) + offset
 
 
+def _validate_subset_fraction(subset_frac: float) -> None:
+    if subset_frac <= 0.0 or subset_frac > 1.0:
+        raise ValueError("subset_frac must be in (0.0, 1.0]")
+
+
+def _target_subset_count(total: int, subset_frac: float) -> int:
+    target_count = int(total * subset_frac)
+    if target_count <= 0:
+        raise ValueError("subset is empty; adjust subset_frac or dataset size")
+    return target_count
+
+
 def _allocate_largest_remainder(
     *,
     group_sizes: dict[str, int],
@@ -74,6 +86,27 @@ def _allocate_largest_remainder(
     return allocated
 
 
+def random_fraction_subset(
+    *,
+    indices: list[int],
+    subset_frac: float,
+    seed: int,
+) -> list[int]:
+    """
+    Select a deterministic random subset before train/val/test splitting.
+
+    The returned subset size is `int(len(indices) * subset_frac)`.
+    """
+    if not indices:
+        raise ValueError("no dataset indices available to subset")
+    _validate_subset_fraction(float(subset_frac))
+
+    shuffled = list(indices)
+    random.Random(seed).shuffle(shuffled)
+    target_count = _target_subset_count(len(shuffled), float(subset_frac))
+    return shuffled[:target_count]
+
+
 def random_fraction_split(
     indices: list[int],
     train_frac: float,
@@ -106,6 +139,51 @@ def random_fraction_split(
     if not train_indices:
         raise ValueError("train split is empty after split computation")
     return train_indices, val_indices, test_indices
+
+
+def stratified_antibodies_fraction_subset(
+    *,
+    indices: list[int],
+    antibodies: list[str],
+    subset_frac: float,
+    seed: int,
+) -> tuple[list[int], list[str]]:
+    """
+    Select a deterministic antibody-balanced subset before split allocation.
+
+    Uses largest-remainder allocation to preserve class proportions as closely
+    as possible while keeping exact integer subset size.
+    """
+    if not indices:
+        raise ValueError("no dataset indices available to subset")
+    if len(indices) != len(antibodies):
+        raise ValueError("indices and antibodies must have matching lengths")
+    _validate_subset_fraction(float(subset_frac))
+
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for index_value, antibody in zip(indices, antibodies, strict=True):
+        grouped[str(antibody)].append(int(index_value))
+
+    for label, values in grouped.items():
+        random.Random(_stable_label_seed(seed, label)).shuffle(values)
+
+    group_sizes = {label: len(values) for label, values in grouped.items()}
+    target_count = _target_subset_count(len(indices), float(subset_frac))
+    subset_counts = _allocate_largest_remainder(
+        group_sizes=group_sizes,
+        target_count=target_count,
+        fraction=subset_frac,
+    )
+
+    subset_indices: list[int] = []
+    subset_antibodies: list[str] = []
+    for label in sorted(grouped):
+        count = subset_counts[label]
+        selected = grouped[label][:count]
+        subset_indices.extend(selected)
+        subset_antibodies.extend([label] * len(selected))
+
+    return subset_indices, subset_antibodies
 
 
 def stratified_antibodies_fraction_split(

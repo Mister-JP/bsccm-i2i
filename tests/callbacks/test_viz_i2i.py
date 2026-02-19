@@ -75,7 +75,8 @@ class _FakeDataModule:
 
         panel: list[dict[str, object]] = []
         index_to_position = {
-            int(global_index): position for position, global_index in enumerate(self.dataset.indices)
+            int(global_index): position
+            for position, global_index in enumerate(self.dataset.indices)
         }
         for label in selected:
             x_samples: list[torch.Tensor] = []
@@ -138,12 +139,12 @@ def test_i2i_viz_callback_logs_antibody_tags_and_respects_cadence() -> None:
     assert len(experiment.calls) == 6
     first_tags = [tag for tag, _, _ in experiment.calls]
     assert first_tags == [
-        "images/CD123/target",
-        "images/CD123/pred",
-        "images/CD123/error_abs",
-        "images/CD45/target",
-        "images/CD45/pred",
-        "images/CD45/error_abs",
+        "cd123/target",
+        "cd123/pred",
+        "cd123/error_abs",
+        "cd45/target",
+        "cd45/pred",
+        "cd45/error_abs",
     ]
     assert all(step == 0 for _, _, step in experiment.calls)
 
@@ -156,10 +157,10 @@ def test_i2i_viz_callback_logs_antibody_tags_and_respects_cadence() -> None:
     assert len(experiment.calls) == 10
     second_tags = [tag for tag, _, _ in experiment.calls[6:]]
     assert second_tags == [
-        "images/CD123/pred",
-        "images/CD123/error_abs",
-        "images/CD45/pred",
-        "images/CD45/error_abs",
+        "cd123/pred",
+        "cd123/error_abs",
+        "cd45/pred",
+        "cd45/error_abs",
     ]
     assert all(step == 100 for _, _, step in experiment.calls[6:])
 
@@ -182,9 +183,9 @@ def test_i2i_viz_callback_respects_antibody_filter() -> None:
 
     tags = [tag for tag, _, _ in experiment.calls]
     assert tags == [
-        "images/CD45/target",
-        "images/CD45/pred",
-        "images/CD45/error_abs",
+        "cd45/target",
+        "cd45/pred",
+        "cd45/error_abs",
     ]
 
 
@@ -211,15 +212,15 @@ def test_i2i_viz_callback_skips_sanity_checking() -> None:
 def test_i2i_viz_callback_round_trips_callback_state() -> None:
     callback = I2IVizCallback(viz_samples_per_antibody=2, image_log_every_n_steps=25)
     callback._next_log_step = 125
-    callback._target_logged_tags = {"images/CD45/target"}
+    callback._target_logged_tags = {"cd45/target"}
 
     state = callback.state_dict()
     assert state == {
         "next_log_step": 125,
-        "target_logged_tags": ["images/CD45/target"],
+        "target_logged_tags": ["cd45/target"],
     }
 
     restored = I2IVizCallback(viz_samples_per_antibody=1, image_log_every_n_steps=10)
     restored.load_state_dict(state)
     assert restored._next_log_step == 125
-    assert restored._target_logged_tags == {"images/CD45/target"}
+    assert restored._target_logged_tags == {"cd45/target"}

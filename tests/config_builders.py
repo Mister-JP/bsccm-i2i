@@ -27,6 +27,7 @@ _BASE_DATA_CONFIG: dict[str, Any] = {
 _BASE_SPLIT_CONFIG: dict[str, Any] = {
     "strategy": "random",
     "seed": 42,
+    "subset_frac": 1.0,
     "train_frac": 0.8,
     "val_frac": 0.1,
     "test_frac": 0.1,
