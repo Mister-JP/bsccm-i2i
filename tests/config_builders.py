@@ -48,6 +48,7 @@ _BASE_TRAINER_CONFIG: dict[str, Any] = {
     "device": "cpu",
     "precision": "32",
     "overfit_n": 0,
+    "prefetch_factor": 4096,
     "seed": 123,
     "deterministic": True,
     "limit_val_batches": 1.0,

@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from pytorch_lightning.utilities.rank_zero import rank_zero_info
 
 from bsccm_i2i.datasets.bsccm_dataset import BSCCM23to6Dataset
+from bsccm_i2i.quiet import run_quietly
 from bsccm_i2i.splits.io import read_indices_csv
 from bsccm_i2i.splits.strategies import random_fraction_split
 _STAGE_TO_SPLITS: dict[str | None, tuple[str, ...]] = {
@@ -142,6 +143,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
         batch_size: int,
         num_workers: int,
         pin_memory: bool,
+        prefetch_factor: int | None = None,
         seed: int,
         train_frac: float,
         val_frac: float,
@@ -156,6 +158,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
         self.batch_size = int(batch_size)
         self.num_workers = int(num_workers)
         self.pin_memory = bool(pin_memory)
+        self.prefetch_factor = None if prefetch_factor is None else int(prefetch_factor)
         self.seed = int(seed)
         self.train_frac = float(train_frac)
         self.val_frac = float(val_frac)
@@ -193,7 +196,7 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
         )
         self._dataset_root = dataset_root
         self._log(f"Opening BSCCM client at {dataset_root}")
-        self._bsccm_client = bsccm.BSCCM(str(dataset_root))
+        self._bsccm_client = run_quietly(lambda: bsccm.BSCCM(str(dataset_root)))
         self._log("BSCCM client ready")
         return self._bsccm_client
 
@@ -300,12 +303,14 @@ class BSCCM23to6DataModule(pl.LightningDataModule):
             f"(shuffle={shuffle}, batch_size={self.batch_size}, "
             f"num_workers={self.num_workers}, dataset_len={dataset_len})"
         )
+        prefetch_factor = self.prefetch_factor if self.num_workers > 0 else None
         return data_loader_cls(
             dataset,
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            prefetch_factor=prefetch_factor,
             generator=generator,
             worker_init_fn=partial(_seed_worker, base_seed=self.seed),
             persistent_workers=self.num_workers > 0,

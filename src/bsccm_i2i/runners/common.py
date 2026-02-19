@@ -97,6 +97,7 @@ def build_datamodule_from_train_config(
         batch_size=train_cfg.data.batch_size,
         num_workers=train_cfg.data.num_workers,
         pin_memory=train_cfg.data.pin_memory,
+        prefetch_factor=train_cfg.trainer.prefetch_factor,
         seed=train_cfg.split.seed,
         train_frac=train_cfg.split.train_frac,
         val_frac=train_cfg.split.val_frac,

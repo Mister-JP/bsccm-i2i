@@ -7,6 +7,8 @@ from typing import Any
 
 import torch
 
+from bsccm_i2i.quiet import run_quietly
+
 EXPECTED_INPUT_CHANNELS = 23
 EXPECTED_TARGET_CHANNELS = 6
 EXPECTED_SPATIAL_SHAPE = (128, 128)
@@ -53,7 +55,7 @@ class BSCCM23to6Dataset:
             )
 
         bsccm_module = importlib.import_module("bsccm")
-        self.bsccm_client = bsccm_module.BSCCM(self.dataset_root)
+        self.bsccm_client = run_quietly(lambda: bsccm_module.BSCCM(self.dataset_root))
         return self.bsccm_client
 
     def __getstate__(self) -> dict[str, Any]:
