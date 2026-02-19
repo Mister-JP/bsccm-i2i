@@ -41,8 +41,8 @@ So the final resolved config has these top-level sections:
 
 - `task/`: `split.yaml`, `train.yaml`
 - `experiment/`: `baseline_unet.yaml`
-- `data/`: `bsccm_tiny.yaml`
-- `split/`: `random_80_10_10.yaml`
+- `data/`: `bsccm_tiny.yaml`, `bsccm_full.yaml`
+- `split/`: `random_80_10_10.yaml`, `stratified_antibodies_80_10_10.yaml`
 - `model/`: `baseline_unet.yaml`, `unet_cnn.yaml`
 - `trainer/`: `default.yaml`, `smoke.yaml`
 - `logging/`: `default.yaml`
@@ -100,6 +100,7 @@ Current examples where YAML overrides schema defaults:
 - Turn on progress logs: `logging.data_progress=true`
 - Run quick smoke steps through preset: `trainer=smoke`
 - Change batch size for a run: `data.batch_size=16`
+- Use antibody-stratified fractions: `split=stratified_antibodies_80_10_10`
 
 ## Expected workflow (explicit split selection)
 

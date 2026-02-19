@@ -1,0 +1,6 @@
+dataset_variant: full
+root_dir: data/bsccm_full
+num_workers: 4
+batch_size: 8
+pin_memory: true
+indices_csv: null

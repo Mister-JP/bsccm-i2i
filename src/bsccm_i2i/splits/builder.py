@@ -14,9 +14,50 @@ from bsccm_i2i.config.schema import SplitTaskConfig
 from bsccm_i2i.datamodules.bsccm_datamodule import resolve_dataset_root
 from bsccm_i2i.runners.paths import write_json
 from bsccm_i2i.splits.io import write_indices_csv
-from bsccm_i2i.splits.strategies import random_fraction_split
+from bsccm_i2i.splits.strategies import (
+    random_fraction_split,
+    stratified_antibodies_fraction_split,
+)
 
 LOGGER = logging.getLogger(__name__)
+_MISSING_ANTIBODY_LABEL = "__missing_antibody__"
+
+
+def _normalize_antibody_label(value: Any) -> str:
+    if value is None:
+        return _MISSING_ANTIBODY_LABEL
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none"}:
+        return _MISSING_ANTIBODY_LABEL
+    return text
+
+
+def _extract_antibody_labels(bsccm_client: Any, indices: list[int]) -> list[str]:
+    index_dataframe = getattr(bsccm_client, "index_dataframe", None)
+    if index_dataframe is None:
+        raise ValueError(
+            "split strategy 'stratified_antibodies' requires bsccm client index_dataframe"
+        )
+    columns = getattr(index_dataframe, "columns", None)
+    if columns is None or "antibodies" not in columns:
+        raise ValueError(
+            "split strategy 'stratified_antibodies' requires an 'antibodies' column "
+            "in BSCCM_index.csv"
+        )
+
+    labels: list[str] = []
+    for index_value in indices:
+        try:
+            raw_value = index_dataframe.loc[index_value, "antibodies"]
+        except Exception as exc:  # pragma: no cover - defensive for external dependency.
+            raise ValueError(
+                "failed to read antibody label for global_index="
+                f"{index_value} from bsccm index dataframe"
+            ) from exc
+        if hasattr(raw_value, "iloc"):
+            raw_value = raw_value.iloc[0]
+        labels.append(_normalize_antibody_label(raw_value))
+    return labels
 
 
 def _compute_sha256(path: Path) -> str:
@@ -62,14 +103,29 @@ def build_split_artifact(split_task_config: SplitTaskConfig) -> dict[str, Any]:
     all_indices = [int(value) for value in bsccm_client.get_indices(shuffle=False)]
 
     strategy = split_task_config.split.strategy.strip().lower()
-    if strategy != "random":
+    if strategy == "random":
+        train_indices, val_indices, test_indices = random_fraction_split(
+            indices=all_indices,
+            train_frac=split_task_config.split.train_frac,
+            val_frac=split_task_config.split.val_frac,
+            seed=split_task_config.split.seed,
+        )
+    elif strategy == "stratified_antibodies":
+        antibody_labels = _extract_antibody_labels(bsccm_client, all_indices)
+        unique_antibodies = len(set(antibody_labels))
+        LOGGER.info(
+            "Applying antibody-stratified split across %d antibody groups",
+            unique_antibodies,
+        )
+        train_indices, val_indices, test_indices = stratified_antibodies_fraction_split(
+            indices=all_indices,
+            antibodies=antibody_labels,
+            train_frac=split_task_config.split.train_frac,
+            val_frac=split_task_config.split.val_frac,
+            seed=split_task_config.split.seed,
+        )
+    else:
         raise ValueError(f"unsupported split strategy: {split_task_config.split.strategy!r}")
-    train_indices, val_indices, test_indices = random_fraction_split(
-        indices=all_indices,
-        train_frac=split_task_config.split.train_frac,
-        val_frac=split_task_config.split.val_frac,
-        seed=split_task_config.split.seed,
-    )
     LOGGER.info(
         "Computed split indices: train=%d val=%d test=%d",
         len(train_indices),
