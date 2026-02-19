@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  - /data: bsccm_tiny
-  - /split: random_80_10_10
+  - /data: bsccm_full
+  - /split: stratified
   - _self_
 
 task_name: split

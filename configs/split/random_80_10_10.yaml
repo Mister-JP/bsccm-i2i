@@ -1,8 +1,0 @@
-strategy: random
-seed: 42
-subset_frac: 1.0
-train_frac: 0.8
-val_frac: 0.1
-test_frac: 0.1
-# Placeholder on purpose: train must receive an explicit split artifact id.
-name: bsccm_23to6__tiny__random__seed42__2026-02-18_12-17-13

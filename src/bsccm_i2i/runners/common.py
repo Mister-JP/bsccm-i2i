@@ -21,7 +21,7 @@ def require_explicit_split_id(split_id: str) -> str:
     normalized = split_id.strip()
     if not normalized or normalized == REQUIRED_SPLIT_ID_PLACEHOLDER:
         raise ValueError(
-            "train requires an explicit split artifact id via split.name=<SPLIT_ID>. "
+            "train requires an explicit split artifact id via split.id=<SPLIT_ID>. "
             "Run `bsccm-i2i split` first, then rerun train with the printed SPLIT_ID. "
             "Automatic split creation during train is intentionally disabled."
         )

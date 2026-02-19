@@ -16,7 +16,7 @@ def test_train_delegates_to_runner_and_prints_run_dir(tmp_path: Path, monkeypatc
     train_config_path = write_config(
         tmp_path / "train_config.yaml",
         make_train_config(
-            split_name="train_split",
+            split_id="train_split",
             overrides={"trainer": {"overfit_n": 2, "max_epochs": 1}},
         ),
     )
@@ -44,7 +44,7 @@ def test_train_delegates_to_runner_and_prints_run_dir(tmp_path: Path, monkeypatc
 
     cfg = captured["cfg"]
     assert isinstance(cfg, dict)
-    assert cfg["split"]["name"] == "train_split"
+    assert cfg["split"]["id"] == "train_split"
     assert cfg["trainer"]["overfit_n"] == 2
     assert cfg["trainer"]["max_epochs"] == 1
 
@@ -77,7 +77,7 @@ def test_train_requires_explicit_split_artifact_id(tmp_path: Path, monkeypatch) 
     runner = CliRunner()
     train_config_path = write_config(
         tmp_path / "train_config.yaml",
-        make_train_config(split_name="REQUIRED_SPLIT_ID"),
+        make_train_config(split_id="REQUIRED_SPLIT_ID"),
     )
 
     result = runner.invoke(
@@ -91,4 +91,4 @@ def test_train_requires_explicit_split_artifact_id(tmp_path: Path, monkeypatch) 
 
     assert result.exit_code != 0
     assert "explicit split artifact id" in result.output
-    assert "split.name=<SPLIT_ID>" in result.output
+    assert "split.id=<SPLIT_ID>" in result.output

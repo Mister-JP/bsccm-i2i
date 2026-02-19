@@ -10,10 +10,10 @@ from bsccm_i2i.config.schema import TrainConfig
 from tests.config_builders import make_train_config
 
 
-def _make_train_cfg(*, split_name: str = "split_abc") -> TrainConfig:
+def _make_train_cfg(*, split_id: str = "split_abc") -> TrainConfig:
     return TrainConfig.model_validate(
         make_train_config(
-            split_name=split_name,
+            split_id=split_id,
             overrides={
                 "model": {"base_channels": 16},
                 "trainer": {"max_steps": 2},

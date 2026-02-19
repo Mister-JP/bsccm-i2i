@@ -5,3 +5,7 @@ defaults:
   - _self_
 
 task_name: train
+
+split:
+  # Train must receive an explicit split artifact id (via override or --config).
+  id: REQUIRED_SPLIT_ID

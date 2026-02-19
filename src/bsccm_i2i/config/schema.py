@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_SPLIT_STRATEGY_ALIASES = {
+    "stratified": "stratified_antibodies",
+}
+_ALLOWED_SPLIT_STRATEGIES = frozenset({"random", "stratified_antibodies"})
 
 
 class DataConfig(BaseModel):
@@ -13,26 +18,61 @@ class DataConfig(BaseModel):
     num_workers: int
     batch_size: int
     pin_memory: bool
-    indices_csv: str | None = None
 
 
-class SplitConfig(BaseModel):
+class SplitDefinitionConfig(BaseModel):
     strategy: str
     seed: int
     subset_frac: float
     train_frac: float
     val_frac: float
     test_frac: float
-    name: str
+
+    @field_validator("strategy", mode="before")
+    @classmethod
+    def normalize_strategy(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise TypeError("split.strategy must be a string")
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("split.strategy must be non-empty")
+        return _SPLIT_STRATEGY_ALIASES.get(normalized, normalized)
+
+    @field_validator("strategy")
+    @classmethod
+    def validate_strategy(cls, value: str) -> str:
+        if value not in _ALLOWED_SPLIT_STRATEGIES:
+            allowed = ", ".join(sorted(_ALLOWED_SPLIT_STRATEGIES))
+            raise ValueError(
+                f"unsupported split.strategy={value!r}; expected one of: {allowed}"
+            )
+        return value
 
     @model_validator(mode="after")
-    def validate_fractions_sum(self) -> SplitConfig:
+    def validate_fractions_sum(self) -> SplitDefinitionConfig:
         if self.subset_frac <= 0.0 or self.subset_frac > 1.0:
             raise ValueError("subset_frac must be in (0.0, 1.0]")
         total = self.train_frac + self.val_frac + self.test_frac
         if abs(total - 1.0) > 1e-6:
             raise ValueError("split fractions must sum to 1.0")
         return self
+
+
+class TrainSplitConfig(SplitDefinitionConfig):
+    id: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("id", "name"),
+    )
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def normalize_split_id(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise TypeError("split.id must be a string")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("split.id must be non-empty")
+        return normalized
 
 
 class ModelConfig(BaseModel):
@@ -79,7 +119,7 @@ class RunConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     data: DataConfig
-    split: SplitConfig
+    split: TrainSplitConfig
     model: ModelConfig
     trainer: TrainerConfig
     logging: LoggingConfig
@@ -136,5 +176,5 @@ class RunReportArtifact(BaseModel):
 class SplitTaskConfig(BaseModel):
     task_name: str
     data: DataConfig
-    split: SplitConfig
+    split: SplitDefinitionConfig
     run: RunConfig

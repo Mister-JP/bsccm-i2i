@@ -45,7 +45,6 @@ def test_build_split_artifact_writes_expected_files(tmp_path: Path, monkeypatch)
 
     task_cfg = SplitTaskConfig.model_validate(
         make_split_task_config(
-            split_name="random_80_10_10",
             overrides={"data": {"batch_size": 8}},
         )
     )
@@ -121,7 +120,7 @@ def test_registry_mismatch_raises(tmp_path: Path, monkeypatch) -> None:
 
     train_cfg = TrainConfig.model_validate(
         make_train_config(
-            split_name=split_id,
+            split_id=split_id,
             overrides={
                 "data": {"batch_size": 8},
                 "split": {"seed": 123},
@@ -173,7 +172,7 @@ def test_registry_mismatch_raises_when_subset_frac_missing(tmp_path: Path, monke
 
     train_cfg = TrainConfig.model_validate(
         make_train_config(
-            split_name=split_id,
+            split_id=split_id,
             overrides={
                 "data": {"batch_size": 8},
                 "split": {"seed": 42, "subset_frac": 1.0},
@@ -229,7 +228,6 @@ def test_build_split_artifact_supports_stratified_antibodies(
 
     task_cfg = SplitTaskConfig.model_validate(
         make_split_task_config(
-            split_name="stratified_antibodies_80_10_10",
             overrides={
                 "split": {
                     "strategy": "stratified_antibodies",
@@ -303,7 +301,6 @@ def test_build_split_artifact_applies_subset_frac_before_stratified_split(
 
     task_cfg = SplitTaskConfig.model_validate(
         make_split_task_config(
-            split_name="stratified_antibodies_subset_50",
             overrides={
                 "split": {
                     "strategy": "stratified_antibodies",

@@ -60,7 +60,7 @@ def run_train(train_cfg: TrainConfig) -> Path:
     write_yaml(run_dir / "config_resolved.yaml", train_cfg.model_dump(mode="json"))
     write_env_snapshot(run_dir)
 
-    split_id = require_explicit_split_id(train_cfg.split.name)
+    split_id = require_explicit_split_id(train_cfg.split.id)
     split_dir = resolve_split_dir(split_id)
     split_metadata = load_split_metadata(split_id)
     validate_split_matches_config(split_metadata=split_metadata, train_cfg=train_cfg)

@@ -2,7 +2,7 @@
 
 defaults:
   - /data: bsccm_tiny
-  - /split: random_80_10_10
+  - /split: stratified
   - /model: baseline_unet
   - /trainer: default
   - /logging: default

@@ -4,5 +4,3 @@ subset_frac: 0.01
 train_frac: 0.8
 val_frac: 0.1
 test_frac: 0.1
-# Placeholder on purpose: train must receive an explicit split artifact id.
-name: balanced_split

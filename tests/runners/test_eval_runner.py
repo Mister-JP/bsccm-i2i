@@ -22,10 +22,9 @@ def test_run_eval_writes_metrics_and_updates_report(tmp_path: Path, monkeypatch)
     indices_csv.write_text("global_index,split\n0,test\n", encoding="utf-8")
 
     train_payload = make_train_config(
-        split_name="split_abc",
+        split_id="split_abc",
         overrides={
             "data": {
-                "indices_csv": "do-not-use-this.csv",
                 "num_workers": 0,
                 "batch_size": 2,
                 "pin_memory": False,

@@ -22,7 +22,7 @@ def resolve_split_dir(split_id: str) -> Path:
     """Resolve `artifacts/splits/<split_id>` and require it to exist."""
     normalized = split_id.strip()
     if not normalized:
-        raise ValueError("split.name must be a non-empty split artifact id")
+        raise ValueError("split.id must be a non-empty split artifact id")
 
     split_dir = _split_artifacts_root() / normalized
     if not split_dir.is_dir():

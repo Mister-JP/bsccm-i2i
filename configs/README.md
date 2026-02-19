@@ -1,118 +1,210 @@
-# Config Tree
+# Configuration Reference
 
-This folder is the Hydra config tree for the CLI.
-At runtime, Hydra composes YAML files into one config object, then Pydantic validates the result.
+This directory is the Hydra config tree for `bsccm-i2i`.
 
-## How the CLI uses these configs
+Runtime order:
+1. Compose/load config.
+2. Validate with Pydantic.
+3. Consume in split/train/eval runners.
 
-`split` command:
-- Entry file: `task/split.yaml`
-- Validated as: `SplitTaskConfig`
-- Purpose: create and register a split artifact (`indices.csv`, split metadata, dataset fingerprint)
+## 1) Loading Modes
 
-`train` command:
-- Entry file: `task/train.yaml`
-- Validated as: `TrainConfig`
-- Purpose: run Lightning training from a split artifact and write standardized run artifacts
+### Hydra composition mode
 
-Note: `train` intentionally does not create splits. You must provide an explicit split artifact id via `split.name=<SPLIT_ID>`.
+Used when running overrides like:
 
-## How composition works for `train`
+```bash
+bsccm-i2i train key=value ...
+```
 
-`task/train.yaml` points to one experiment:
-- `/experiment: baseline_unet`
+Hydra composes from `configs/task/*.yaml` and group defaults.
 
-`experiment/baseline_unet.yaml` then pulls in:
+### Direct file mode
+
+Used with:
+
+```bash
+bsccm-i2i train --config path/to/file.yaml
+```
+
+This bypasses Hydra composition and validates the file directly.
+CLI enforces: use either `--config` or overrides, not both.
+
+## 2) Command Entrypoints
+
+| command | entry config | schema | runtime |
+|---|---|---|---|
+| `split` | `task/split.yaml` | `SplitTaskConfig` | `splits/builder.py` |
+| `train` | `task/train.yaml` | `TrainConfig` | `runners/train.py` |
+| `eval` | `task/eval.yaml` | `EvalTaskConfig` | `runners/eval.py` |
+
+## 3) Composition Graph (Current Default Train)
+
+`task/train.yaml` defaults to one experiment.
+
+`experiment/baseline_unet.yaml` currently composes:
 - `/data: bsccm_tiny`
-- `/split: random_80_10_10`
+- `/split: stratified`
 - `/model: baseline_unet`
 - `/trainer: default`
 - `/logging: default`
 
-So the final resolved config has these top-level sections:
-- `data`
-- `split`
-- `model`
-- `trainer`
-- `logging`
-- `run`
+Train config also defines a required split artifact selector:
+- `split.id: REQUIRED_SPLIT_ID`
 
-## Config groups in this repo
+So train runs must set:
+- `split.id=<SPLIT_ID>`
 
-- `task/`: `split.yaml`, `train.yaml`
-- `experiment/`: `baseline_unet.yaml`
-- `data/`: `bsccm_tiny.yaml`, `bsccm_full.yaml`
-- `split/`: `random_80_10_10.yaml`, `stratified_antibodies_80_10_10.yaml`
-- `model/`: `baseline_unet.yaml`, `unet_cnn.yaml`
-- `trainer/`: `default.yaml`, `smoke.yaml`
-- `logging/`: `default.yaml`
+## 4) Config Groups and Semantics
 
-## What each section controls
+### `data/*` fields
 
-`data`:
-- Where the dataset is read from (`root_dir`, `dataset_variant`)
-- DataLoader behavior (`batch_size`, `num_workers`, `pin_memory`)
-- Optional indices CSV field (`indices_csv`) at schema/datamodule level; in the current `train` CLI flow it is populated from the selected split artifact (`artifacts/splits/<split_id>/indices.csv`)
+Fields:
+- `dataset_variant`
+- `root_dir`
+- `num_workers`
+- `batch_size`
+- `pin_memory`
 
-`split`:
-- Split strategy and seed
-- Optional pre-split dataset downsampling fraction (`subset_frac`)
-- Train/val/test fractions
-- Artifact id reference (`name`) used later by `train`; default is a placeholder to force explicit selection
+Usage:
+- `split` uses `dataset_variant` and `root_dir`.
+- `train` and `eval` use all fields above for dataloaders.
+- Train/eval indices always come from split artifacts (`indices.csv` via `split_ref`), not from data config.
 
-Constraint:
-- `subset_frac` must be in `(0.0, 1.0]`
-- `train_frac + val_frac + test_frac` must equal `1.0`
+### `split/*` fields
 
-`model`:
-- Model selection (`name`)
-- Channel contract (`in_channels`, `out_channels`)
-- Capacity (`base_channels`)
-- Optimizer hyperparameters (`lr`, `weight_decay`)
+Split-definition fields:
+- `strategy`
+- `seed`
+- `subset_frac`
+- `train_frac`
+- `val_frac`
+- `test_frac`
 
-`trainer`:
-- Runtime controls (`max_epochs`, `max_steps`, `device`, `precision`)
-- Reproducibility (`seed`, `deterministic`)
-- Trainer limits and toggles (`limit_train_batches`, `limit_val_batches`, `enable_checkpointing`, `logger`)
+Train-only field:
+- `id` (split artifact id selector)
 
-`logging`:
-- TensorBoard enablement
-- Scalar logging cadence (`log_every_n_steps`)
-- Image logging cadence (`image_log_every_n_steps`)
-- Optional explicit antibody subset for image panels (`viz_antibodies`)
-- Number of samples per antibody in image visualizations (`viz_samples_per_antibody`)
-- Whether targets are logged once per antibody tag (`viz_log_target_once`)
-- Whether absolute error grids are logged (`viz_log_error`)
-- Extra split/datamodule progress logs (`data_progress`)
+Important:
+- `split` command uses split-definition fields only and creates a new artifact id automatically.
+- `train` command never creates splits; it requires an existing artifact id via `split.id`.
+- Legacy `split.name` is still accepted on input for backward compatibility with older run artifacts.
+- `strategy` is normalized in schema with `strip().lower()` and validated.
+- Supported strategies: `random`, `stratified_antibodies`.
+- Alias accepted: `stratified` -> `stratified_antibodies`.
+- Fraction rules are enforced: `subset_frac in (0,1]` and `train+val+test == 1.0`.
+- `test_frac` is part of the split contract and is validated/tracked with the artifact metadata.
 
-`run`:
-- Run naming (`run_name`)
-- Metadata labels (`tags`)
+### `model/*` fields
 
-## Defaults and precedence
+Fields:
+- `name`
+- `in_channels`
+- `out_channels`
+- `base_channels`
+- `lr`
+- `weight_decay`
 
-- Values in YAML files are composed first.
-- Any missing values are filled by schema defaults.
-- If both exist, YAML value wins.
+Current runtime support:
+- `name=unet_cnn`
 
-Current examples where YAML overrides schema defaults:
-- `logging.log_every_n_steps`: schema default `50`, YAML sets `10`
-- `logging.image_log_every_n_steps`: schema default `200`, YAML sets `100`
-- `logging.data_progress`: schema default `false`, YAML sets `true`
+### `trainer/*` fields
 
-## Common override patterns
+Fields:
+- `max_epochs`
+- `max_steps`
+- `device`
+- `precision`
+- `overfit_n`
+- `prefetch_factor`
+- `seed`
+- `deterministic`
+- `limit_train_batches`
+- `limit_val_batches`
+- `enable_checkpointing`
+- `logger`
 
-- Turn on progress logs: `logging.data_progress=true`
-- Run quick smoke steps through preset: `trainer=smoke`
-- Change batch size for a run: `data.batch_size=16`
-- Use antibody-stratified fractions: `split=stratified_antibodies_80_10_10`
+Key behavior:
+- `max_steps=0` means uncapped (`-1` to Lightning).
+- `device` resolved from `auto/gpu/cuda/mps/cpu`.
+- `precision` maps `"32"|"16"|"bf16"` to Lightning precision strings.
+- `deterministic=true` seeds and configures deterministic torch behavior.
 
-## Expected workflow (explicit split selection)
+### `logging/*` fields
 
-1. Build a split artifact:
-- `bsccm-i2i split`
-2. Copy the printed `SPLIT_ID`.
-3. Run train with that id:
-- `bsccm-i2i train experiment=baseline_unet split.name=<SPLIT_ID> ...`
+Fields:
+- `tensorboard`
+- `log_every_n_steps`
+- `image_log_every_n_steps`
+- `viz_antibodies`
+- `viz_samples_per_antibody`
+- `viz_log_target_once`
+- `viz_log_error`
+- `data_progress`
 
-This is intentional so training never silently re-splits data.
+These control scalar/image logging and datamodule progress logs.
+
+### `run` fields
+
+Fields:
+- `run_name`
+- `tags`
+
+Usage:
+- `train` uses `run_name` for output path.
+- `split` currently does not consume `run.*`.
+
+### `eval` fields (`task/eval.yaml`)
+
+Fields:
+- `run_dir`
+- `checkpoint`
+- `device`
+- `precision`
+- `limit_test_batches`
+
+Eval loads prior train artifacts from `run_dir` and reuses their train config + split reference.
+
+## 5) Precedence
+
+Order:
+1. Composed YAML + CLI overrides.
+2. Missing values filled by schema defaults.
+
+YAML taking precedence over schema defaults is expected behavior.
+
+## 6) Common Workflows
+
+### Create split artifact
+
+```bash
+bsccm-i2i split \
+  data=bsccm_full \
+  split=stratified \
+  split.subset_frac=0.01
+```
+
+### Train using existing split artifact
+
+```bash
+bsccm-i2i train \
+  experiment=baseline_unet \
+  split.id=<SPLIT_ID>
+```
+
+### Smoke train
+
+```bash
+bsccm-i2i train \
+  experiment=baseline_unet \
+  split.id=<SPLIT_ID> \
+  trainer=smoke \
+  data.num_workers=0
+```
+
+### Eval an existing run
+
+```bash
+bsccm-i2i eval \
+  eval.run_dir=runs/<date>/<run_name>/<timestamp> \
+  eval.checkpoint=best
+```

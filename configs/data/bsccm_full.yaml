@@ -3,4 +3,3 @@ root_dir: data/bsccm_full
 num_workers: 16
 batch_size: 8
 pin_memory: true
-indices_csv: null

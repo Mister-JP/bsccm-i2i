@@ -21,7 +21,6 @@ _BASE_DATA_CONFIG: dict[str, Any] = {
     "num_workers": 0,
     "batch_size": 2,
     "pin_memory": False,
-    "indices_csv": None,
 }
 
 _BASE_SPLIT_CONFIG: dict[str, Any] = {
@@ -31,7 +30,6 @@ _BASE_SPLIT_CONFIG: dict[str, Any] = {
     "train_frac": 0.8,
     "val_frac": 0.1,
     "test_frac": 0.1,
-    "name": "random_80_10_10",
 }
 
 _BASE_MODEL_CONFIG: dict[str, Any] = {
@@ -80,7 +78,7 @@ _BASE_EVAL_CONFIG: dict[str, Any] = {
 
 def make_train_config(
     *,
-    split_name: str = "random_80_10_10",
+    split_id: str = "split_abc",
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     config: dict[str, Any] = {
@@ -92,7 +90,7 @@ def make_train_config(
         "logging": deepcopy(_BASE_LOGGING_CONFIG),
         "run": {"run_name": "baseline_unet", "tags": ["baseline"]},
     }
-    config["split"]["name"] = split_name
+    config["split"]["id"] = split_id
     if overrides:
         _deep_update(config, overrides)
     return config
@@ -100,7 +98,6 @@ def make_train_config(
 
 def make_split_task_config(
     *,
-    split_name: str = "unused",
     overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     config: dict[str, Any] = {
@@ -109,7 +106,6 @@ def make_split_task_config(
         "split": deepcopy(_BASE_SPLIT_CONFIG),
         "run": {"run_name": "split_artifact", "tags": ["split"]},
     }
-    config["split"]["name"] = split_name
     if overrides:
         _deep_update(config, overrides)
     return config
